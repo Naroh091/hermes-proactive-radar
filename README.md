@@ -9,7 +9,7 @@
 
 <p align="center"><em>It reads everything, so you only hear about what matters.</em></p>
 
-Hermes Radar makes [Hermes Agent](https://hermes-agent.nousresearch.com) **proactive**. Instead of waiting for you to ask, it watches your mail, your calendar, your repositories and your own conversations with the agent, works out what each new thing means for you, and gets on with it: it looks things up, prepares the next step, and writes to you first, on Telegram, when there is news worth telling or a decision only you can take.
+Hermes Radar makes [Hermes Agent](https://hermes-agent.nousresearch.com) **proactive**. Instead of waiting for you to ask, it watches your mail, your calendar, your repositories and your own conversations with the agent, works out what each new thing means for you, and gets on with it: it looks things up, prepares the next step, and writes to you first, on the messaging app you already use with Hermes, when there is news worth telling or a decision only you can take.
 
 ## What is Hermes Radar?
 
@@ -49,13 +49,13 @@ Nothing in this loop starts with you typing a prompt. It starts when something h
 
 Whatever the level, sending email always asks, and paying, booking, deploying and merging never run on their own.
 
-**It reaches you like a person would.** Radar opens the conversation; you do not have to check a dashboard. Alerts arrive on Telegram, the only delivery channel today, in two forms. An *interruption* is for what cannot wait: a security alert, a blocked payment, a deadline within hours, a probable booking mistake. Everything else becomes a *reminder*: one thing at a time, in a sentence or two of plain prose, spread over your waking hours, never a block of items. You answer with a button or in your own words ("wait for their reply", "already done"). Quiet hours, a daily cap and a per-task cool-down keep it from nagging, and what you close stays closed. Hermes Desktop shows the same tasks as a panel, where anything born in your own chats waits quietly until something new happens or a deadline approaches.
+**It reaches you like a person would.** Radar opens the conversation; you do not have to check a dashboard. Alerts arrive on the platform you choose among those your Hermes gateway is connected to (Telegram, Discord, Slack, WhatsApp, Signal, Matrix and the rest), in two forms. An *interruption* is for what cannot wait: a security alert, a blocked payment, a deadline within hours, a probable booking mistake. Everything else becomes a *reminder*: one thing at a time, in a sentence or two of plain prose, spread over your waking hours, never a block of items. On Telegram the answers are buttons; on every other platform they are named on a line under the message and you reply to it in your own words ("yes", "later", "wait for their reply", "already done"), which works on Telegram too. Quiet hours, a daily cap and a per-task cool-down keep it from nagging, and what you close stays closed. Hermes Desktop shows the same tasks as a panel, where anything born in your own chats waits quietly until something new happens or a deadline approaches.
 
 **It learns from your answers.** Muting a notice teaches Radar about that family of messages. Answering a question stores the answer as a fact, so it is not asked twice. Replying to something Radar thought was minor tells it you care about that sender.
 
 ## Quick start
 
-You need Hermes Agent 0.22 or later with its Telegram gateway running (Telegram is where Radar writes to you), and at least one mail source: a Gmail MCP server, or a command-line connector such as `gws`.
+You need Hermes Agent 0.22 or later with its gateway connected to at least one messaging platform (that is where Radar writes to you), and at least one mail source: a Gmail MCP server, or a command-line connector such as `gws`.
 
 ```bash
 # 1. Install and enable
@@ -63,14 +63,14 @@ hermes plugins install Naroh091/hermes-radar
 
 # 2. Let Radar find your mail and calendar connections, then answer a few questions
 hermes radar discover
-hermes radar setup        # language, trust level, timezone, quiet hours, Telegram chat, accounts
+hermes radar setup        # language, trust level, timezone, quiet hours, where to write to you, accounts
 hermes radar validate
 
 # 3. Restart the gateway so the scheduler starts
 hermes gateway restart
 ```
 
-Then, from your own Telegram chat with the agent:
+Then, from the chat where you want to hear from Radar:
 
 ```
 /radar verify
@@ -123,7 +123,7 @@ Radar is not a sandboxed toy; this is everything it does outside its own data.
 | Behaviour | Detail |
 |---|---|
 | Background work | A scheduler task inside the gateway process. Delegated jobs are `hermes chat` child processes, at most `jobs.max_concurrent` (2) at a time and `jobs_per_day` (100) a day. |
-| Network | Mail and calendar through the MCP servers or command-line tools you chose; GitHub through `gh`; the model through Hermes; Telegram through the gateway. No telemetry, no other third party. |
+| Network | Mail and calendar through the MCP servers or command-line tools you chose; GitHub through `gh`; the model through Hermes; your messaging platform through the gateway's own adapter. No telemetry, no other third party. |
 | Local listener | Only with Gmail push enabled: an HTTP receiver on `127.0.0.1:8666` that verifies Google's signed push and forwards it to a host webhook route. |
 | Shell commands | `gh`, and the mail or calendar command-line tool you configured. Code jobs work in a private checkout under `~/.hermes/radar/workspaces`. |
 | Reads outside its own data | The host's session store (`state.db`, read-only, to tell whether a conversation is still active), cron job outputs, and the host's memory provider through its own recall tool. |
@@ -131,6 +131,17 @@ Radar is not a sandboxed toy; this is everything it does outside its own data.
 | Credentials | Two optional secrets for Gmail push, read through the host's secret scope. Radar never opens `.env`, `auth.json` or another tool's login, and never holds or refreshes an OAuth token. |
 
 Gmail push is optional. Radar only *receives* the push; keeping the Gmail watch alive belongs to your mail integration, and polling remains the safety net.
+
+## Where Radar writes to you
+
+`destination.platform` names any platform the gateway connects; `/radar verify`, sent from the chat you want, binds Radar to that chat and that user, and nobody else's replies are read as answers.
+
+| Platform | Messages | Answers |
+|---|---|---|
+| Telegram | Rich text, the report as a file | Buttons, or a written reply to the message |
+| Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Teams, Google Chat, email, SMS and the other gateway platforms | The same words as markdown, through the host's adapter | A written reply to the message; the answers on offer are named under it |
+
+A written reply is matched to its notice by the message it quotes, so it needs a platform with replies or threads. Native buttons outside Telegram, and a Hermes Bot Chat as the destination, are not there yet.
 
 ## Configuration
 

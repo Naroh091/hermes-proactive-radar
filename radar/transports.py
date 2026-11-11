@@ -171,3 +171,82 @@ def telegram_editor(bot: Any) -> Callable[..., Awaitable[None]]:
         await telegram_edit(bot, destination, message_id, payload)
 
     return edit
+
+
+# -- any gateway platform ---------------------------------------------------------------------------
+# Notices are composed once, in the small HTML subset Telegram accepts. Every other platform gets the same words as
+# markdown through the host's own adapter (``BasePlatformAdapter.send``), which already knows how each platform
+# formats, splits and threads a message.
+_LINK = re.compile(r'<a\s+href="([^"]+)"\s*>(.*?)</a>', re.S | re.I)
+_MARKS = (("b", "**"), ("strong", "**"), ("i", "_"), ("em", "_"), ("code", "`"), ("s", "~~"))
+
+
+def to_markdown(text: str) -> str:
+    """The notice's HTML as markdown: bold, italics, code, links and quotes survive; any other tag is dropped."""
+    import html as _html
+
+    out = _LINK.sub(lambda m: f"[{_TAG.sub('', m.group(2))}]({m.group(1)})", text or "")
+    out = re.sub(r"<pre>(.*?)</pre>", lambda m: "```\n" + m.group(1).strip("\n") + "\n```", out, flags=re.S | re.I)
+    out = re.sub(r"<blockquote[^>]*>(.*?)</blockquote>", lambda m: "\n".join("> " + line for line in m.group(1).strip().splitlines()), out, flags=re.S | re.I)
+    for tag, mark in _MARKS:
+        out = re.sub(rf"</?{tag}>", mark, out, flags=re.I)
+    return _html.unescape(_TAG.sub("", out))
+
+
+def choices_line(buttons: Any) -> str:
+    """The answers a notice offers, for a platform that draws no buttons: their labels on one line. The owner answers
+    in words (replying to the message), and the reply is understood against the same decisions the buttons stand for."""
+    labels = []
+    for row in buttons or []:
+        for cell in row if isinstance(row, list) else []:
+            label = str((cell or {}).get("label") or "").strip() if isinstance(cell, dict) else ""
+            if label and label not in labels:
+                labels.append(label)
+    return ("↩ " + " · ".join(labels)) if labels else ""
+
+
+def adapter_text(payload: dict[str, Any]) -> str:
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("notification text is required")
+    body = to_markdown(text) if payload.get("parse_mode") else text
+    choices = choices_line(payload.get("buttons"))
+    return f"{body}\n\n{choices}" if choices else body
+
+
+def _address(destination: dict[str, Any], payload: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    address = destination.get("address") or {}
+    chat_id = address.get("chat_id")
+    if not isinstance(chat_id, (str, int)) or isinstance(chat_id, bool) or str(chat_id) == "":
+        raise ValueError("verified destination lacks chat_id")
+    thread_id = payload.get("thread_id") or address.get("thread_id")
+    return str(chat_id), ({"thread_id": str(thread_id)} if thread_id not in (None, "") else None)
+
+
+def adapter_sender(adapter: Any) -> Sender:
+    """A sender over the host's adapter of any platform: text (and the report, where the platform takes files)."""
+    async def send(destination: dict[str, Any], payload: dict[str, Any]) -> DeliveryReceipt:
+        chat_id, metadata = _address(destination, payload)
+        result = await adapter.send(chat_id, adapter_text(payload), metadata=metadata)
+        if not getattr(result, "success", False):
+            raise RuntimeError(f"{getattr(adapter, 'name', 'platform')} did not deliver: {str(getattr(result, 'error', '') or 'unknown error')[:200]}")
+        message_id = getattr(result, "message_id", None)
+        document = payload.get("document")
+        if isinstance(document, dict) and document.get("path"):
+            try:
+                await adapter.send_document(chat_id, str(document["path"]), caption=str(document.get("caption") or "")[:1000] or None,
+                                            file_name=document.get("filename") or "report.html", metadata=metadata)
+            except Exception as exc:
+                log.warning("document send failed: %s", exc)
+        # A platform that returns no id still delivered; the notice just cannot be matched to a quoted reply later.
+        return DeliveryReceipt(str(message_id) if message_id not in (None, "") else "")
+    return send
+
+
+def adapter_editor(adapter: Any) -> Callable[..., Awaitable[None]]:
+    async def edit(destination: dict[str, Any], message_id: str, payload: dict[str, Any]) -> None:
+        chat_id, _ = _address(destination, payload)
+        result = await adapter.edit_message(chat_id, str(message_id), adapter_text(payload))
+        if not getattr(result, "success", False):
+            raise RuntimeError("the platform does not edit messages")
+    return edit

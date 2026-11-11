@@ -9,7 +9,7 @@
 
 ## Host surfaces used
 
-- **Plugin context:** `register(ctx)`, `ctx.register_tool`, `ctx.register_hook`, `ctx.register_command`, `ctx.register_cli_command`, `ctx.register_platform_handler("telegram")` (a PTB `CallbackQueryHandler` scoped to Radar's own callback prefixes), `ctx.dispatch_tool`, `ctx.spawn_task`, `ctx.llm` with plugin-owned auxiliary slots, `ctx.get_config` / `ctx.set_config`, `ctx.on_unload`.
+- **Plugin context:** `register(ctx)`, `ctx.register_tool`, `ctx.register_hook`, `ctx.register_command`, `ctx.register_cli_command`, `ctx.register_platform_handler` (on Telegram, a PTB `CallbackQueryHandler` scoped to Radar's own callback prefixes; on every other platform, only the adapter's `send`, `edit_message` and `send_document`), `ctx.dispatch_tool`, `ctx.spawn_task`, `ctx.llm` with plugin-owned auxiliary slots, `ctx.get_config` / `ctx.set_config`, `ctx.on_unload`.
 - **Hooks:** `on_session_start`, `post_llm_call`, `subagent_stop`, `post_compaction`, `pre_gateway_dispatch`, `pre_llm_call`, `pre_tool_call`.
 - **Host tools, dispatched through the plugin context:** `session_search` (past sessions) and `cronjob_manage` (create and list scheduled jobs).
 - **Public modules:** `hermes_constants`, `hermes_cli.config`, `hermes_state.SessionDB`, `agent.secret_scope`, `gateway.session_context.get_session_env`.

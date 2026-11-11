@@ -181,7 +181,8 @@ async def send_detail(rt: Any, result: dict[str, Any]) -> bool:
     """Send the full draft or details as its own message and record it, so a reply to it still resolves."""
     proposal = result.get("proposal") or {}
     text = str(result.get("detail") or "")
-    if not text or not rt.transports.available("telegram"):
+    home = destination_platform(rt)
+    if not text or not rt.transports.available(home):
         return False
     language = rt.config.get("owner", {}).get("language", "es")
     now_dt = rt.clock()
@@ -196,7 +197,7 @@ async def send_detail(rt: Any, result: dict[str, Any]) -> bool:
             payload["document"] = document
     try:
         destination = rt.store.destination("configured:primary")
-        receipt = await rt.transports.send("telegram", destination, payload)
+        receipt = await rt.transports.send(home, destination, payload)
     except Exception as exc:
         log.warning("detail message not sent: %s", exc)
         return False
@@ -210,12 +211,18 @@ async def send_detail(rt: Any, result: dict[str, Any]) -> bool:
     return True
 
 
+def destination_platform(rt: Any) -> str:
+    """The platform the owner chose to be reached on (Telegram unless the configuration says otherwise)."""
+    return str((rt.config.get("destination") or {}).get("platform") or "telegram").strip().lower()
+
+
 async def handle_text_reply(rt: Any, event: Any) -> dict[str, Any] | None:
     """Free-text reply to a notice (``pre_gateway_dispatch``). Returns a skip directive when handled."""
     source = getattr(event, "source", None)
     platform = getattr(source, "platform", None)
     platform = getattr(platform, "value", platform)
-    if str(platform or "") != "telegram":
+    home = destination_platform(rt)
+    if str(platform or "").strip().lower() != home:
         return None
     reply_to = getattr(event, "reply_to_message_id", None)
     if not reply_to:
@@ -232,7 +239,7 @@ async def handle_text_reply(rt: Any, event: Any) -> dict[str, Any] | None:
     # The model reads the reply, in any language, with the message and its decisions in front of it; the regex floor
     # settles trivial replies and stands in when the model cannot.
     intent = await understand(getattr(rt, "gate", None), text, outbox_row=row, store=rt.store, language=rt.config.get("owner", {}).get("language", "es"))
-    actor = f"telegram:{getattr(source, 'user_id', '')}"
+    actor = f"{home}:{getattr(source, 'user_id', '')}"
     result = resolve_reply(rt.store, rt.config, outbox_row=row, intent=intent, actor=actor, now_dt=rt.clock(), note=text)
     from .learn import learn_from_reply
 
@@ -245,16 +252,16 @@ async def handle_text_reply(rt: Any, event: Any) -> dict[str, Any] | None:
         # Words no button stands for: the task hears them (the next plan starts from them). When they are unclear the
         # chat agent still answers the owner (it can act on the task with radar_task); a plain yes or no to a message
         # with nothing to decide («noted») is acknowledged here and goes no further than the task.
-        record_owner_words(rt.store, outbox_row=row, text=text, actor=actor, channel="telegram", now_dt=rt.clock(),
+        record_owner_words(rt.store, outbox_row=row, text=text, actor=actor, channel=home, now_dt=rt.clock(),
                            language=rt.config.get("owner", {}).get("language", "es"))
         if result.get("outcome") == "unclear":
             return None
     if result.get("outcome") == "question":
         return None  # a question for the agent, not an answer
     ack = str(result.get("text") or "")
-    if ack and rt.transports.available("telegram"):
+    if ack and rt.transports.available(home):
         try:
-            await rt.transports.send("telegram", rt.store.destination("configured:primary"), {"text": ack, "parse_mode": None})
+            await rt.transports.send(home, rt.store.destination("configured:primary"), {"text": ack, "parse_mode": None})
         except Exception as exc:
             log.debug("reply ack not sent: %s", exc)
     return {"action": "skip", "reason": f"radar reply handled: {result.get('outcome')}"}
@@ -280,9 +287,10 @@ def verify_from_session(rt: Any, identity: dict[str, str]) -> str:
     """``/radar verify``: bind the configured destination to the chat and user issuing the command."""
     language = rt.config.get("owner", {}).get("language", "es")
     destination = rt.config.get("destination") or {}
-    if not rt.config.get("enabled") or destination.get("platform") != "telegram":
+    home = destination_platform(rt)
+    if not rt.config.get("enabled") or not destination.get("platform"):
         return t(language, "not_configured")
-    if str(identity.get("platform") or "") != "telegram":
+    if str(identity.get("platform") or "").strip().lower() != home:
         return t(language, "not_configured")
     if str(identity.get("user_id") or "") != str(destination.get("owner_platform_id") or ""):
         return t(language, "actor_detail", user=identity.get("user_id") or "?", expected=destination.get("owner_platform_id") or "?")
@@ -301,10 +309,10 @@ def verify_from_session(rt: Any, identity: dict[str, str]) -> str:
     if thread_id:
         address["thread_id"] = str(thread_id)
     rt.store.verify_destination(
-        destination_id="configured:primary", platform="telegram",
-        gateway_connection_ref=destination.get("gateway_connection_ref") or "telegram:default",
+        destination_id="configured:primary", platform=home,
+        gateway_connection_ref=destination.get("gateway_connection_ref") or f"{home}:default",
         address=address, owner_platform_id=str(identity["user_id"]), kind=kind,
-        capabilities={"text": True, "buttons": True, "documents": True}, now=iso_now(rt),
+        capabilities={"text": True, "buttons": home == "telegram", "documents": True}, now=iso_now(rt),
     )
     return t(language, "verified")
 
@@ -381,9 +389,9 @@ def launch_warmup(rt: Any) -> bool:
             log.warning("warmup failed: %s", exc)
             text = t(language, "warmup_failed")
         transports = getattr(rt, "transports", None)
-        if transports is not None and transports.available("telegram"):
+        if transports is not None and transports.available(destination_platform(rt)):
             try:
-                await transports.send("telegram", rt.store.destination("configured:primary"), {"text": text, "parse_mode": None})
+                await transports.send(destination_platform(rt), rt.store.destination("configured:primary"), {"text": text, "parse_mode": None})
             except Exception as exc:
                 log.debug("warmup result not sent: %s", exc)
 

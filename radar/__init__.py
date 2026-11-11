@@ -30,7 +30,7 @@ from .scheduler import Scheduler, iso, sync_configured_sources, utc_now
 from .schemas import tools
 from .sources.session import record_subagent, record_turn
 from .store import Scope, Store
-from .transports import TransportRegistry, telegram_editor, telegram_sender
+from .transports import TransportRegistry, adapter_editor, adapter_sender, telegram_editor, telegram_sender
 
 log = logging.getLogger(__name__)
 _RUNTIME: dict[int, dict] = {}
@@ -593,6 +593,27 @@ def telegram_factory(ctx):
     return factory
 
 
+# Platforms the host's gateway can connect besides Telegram. Each gets a text sender over the host's own adapter the
+# moment it connects; a name the host does not know is simply never connected.
+OTHER_PLATFORMS = (
+    "discord", "slack", "whatsapp", "whatsapp_cloud", "signal", "matrix", "mattermost", "teams", "google_chat", "email", "sms",
+    "irc", "line", "feishu", "dingtalk", "wecom", "weixin", "qqbot", "bluebubbles", "simplex", "ntfy",
+)
+
+
+def adapter_factory(ctx, platform: str):
+    """Register the outbound sender of ``platform`` on its adapter. No handler is attached to the platform's SDK:
+    written replies reach radar through ``pre_gateway_dispatch`` like any other message."""
+    def factory(native, adapter):
+        if adapter is None or not hasattr(adapter, "send"):
+            return
+        registry = _TRANSPORTS.setdefault(id(ctx), TransportRegistry())
+        registry.register(platform, adapter_sender(adapter), adapter_editor(adapter))
+        on_session_start(ctx)
+
+    return factory
+
+
 def register(ctx):
     """Public Hermes entry point; it never imports or alters the core."""
     ctx.register_tool(name="radar_status", toolset="radar", schema=tools.STATUS, handler=lambda a, **k: status(ctx, **k))
@@ -616,6 +637,11 @@ def register(ctx):
     ctx.register_hook("pre_llm_call", lambda **kw: bind_job_session(ctx, **kw))
     ctx.register_hook("pre_tool_call", lambda **kw: guard(ctx, **kw))  # inert outside a job's session
     ctx.register_platform_handler("telegram", telegram_factory(ctx))
+    for platform in OTHER_PLATFORMS:
+        try:
+            ctx.register_platform_handler(platform, adapter_factory(ctx, platform))
+        except Exception as exc:  # a host that refuses a name it does not ship
+            log.debug("radar sender for %s not registered: %s", platform, exc)
     register_command = getattr(ctx, "register_command", None)
     if callable(register_command):
         # ``/radar`` is a built-in alias of ``/loop`` in Hermes, so the in-session command is ``/radar``.

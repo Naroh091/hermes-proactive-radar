@@ -322,8 +322,10 @@ def _setup(ctx, *, yes: bool) -> int:
     brief_on = _ask("Morning brief with agenda, conflicts and replies owed at a fixed hour? (y/n)",
                     "y" if brief_default.get("enabled") else "n", yes=yes)
     brief_time = _ask("  brief time (HH:MM)", str(brief_default.get("time") or "07:00"), yes=yes) if brief_on.lower() == "y" else str(brief_default.get("time") or "07:00")
-    chat_id = _ask("Telegram chat id for notices (empty to skip)", str((cfg["destination"].get("address") or {}).get("chat_id") or ""), yes=yes)
-    owner_platform_id = _ask("Telegram user id of the owner", str(cfg["destination"].get("owner_platform_id") or ""), yes=yes) if chat_id else ""
+    platform = (_ask("Where should Radar write to you? A platform your gateway is connected to (telegram, discord, slack, whatsapp…)",
+                     str(cfg["destination"].get("platform") or "telegram"), yes=yes) or "telegram").strip().lower()
+    chat_id = _ask(f"{platform} chat id for notices (empty to skip)", str((cfg["destination"].get("address") or {}).get("chat_id") or ""), yes=yes)
+    owner_platform_id = _ask(f"{platform} user id of the owner", str(cfg["destination"].get("owner_platform_id") or ""), yes=yes) if chat_id else ""
 
     rows = discover(home)
     existing = {s["id"]: s for s in cfg["sources"]}
@@ -384,7 +386,7 @@ def _setup(ctx, *, yes: bool) -> int:
         "sources": chosen,
     }
     if chat_id:
-        settings["destination"] = {**cfg["destination"], "platform": "telegram", "gateway_connection_ref": "telegram:default",
+        settings["destination"] = {**cfg["destination"], "platform": platform, "gateway_connection_ref": f"{platform}:default",
                                    "address": {"chat_id": str(chat_id)}, "owner_platform_id": str(owner_platform_id)}
     any_push = any(s.get("kind") == "gmail" and (s.get("push") or {}).get("enabled") for s in chosen)
     if any_push:

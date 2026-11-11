@@ -1,6 +1,7 @@
 """Closed schemas and local validation for the plugin configuration."""
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -286,8 +287,9 @@ def validate_config(value: Any) -> tuple[bool, list[str]]:
             errors.append("destination.address must be object")
         if destination.get("allow_groups", False) not in (True, False):
             errors.append("destination.allow_groups must be boolean")
-        if destination.get("platform") not in (None, "telegram"):
-            errors.append("destination.platform must be null or telegram")
+        platform = destination.get("platform")
+        if platform is not None and (not isinstance(platform, str) or not re.fullmatch(r"[a-z0-9_-]{1,40}", platform)):
+            errors.append("destination.platform must be null or a gateway platform name (telegram, discord, slack, whatsapp…)")
 
     for section, fields in {
         "scheduler": ("tick_seconds", "max_concurrent_checks"),

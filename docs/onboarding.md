@@ -8,7 +8,7 @@ hermes plugins install Naroh091/hermes-radar
 
 This leaves the plugin in `plugins.enabled`. Radar installs disabled and in shadow mode; `hermes radar setup` turns it on and writes `plugins.entries.radar.settings` and the `mcp_allowlist`.
 
-Restart the gateway (`hermes gateway restart`). The scheduler starts from the Telegram handler or on the gateway's first `on_session_start`.
+Restart the gateway (`hermes gateway restart`). The scheduler starts when the gateway connects your messaging platform or on its first `on_session_start`.
 
 ## 2. Discover and configure
 
@@ -17,7 +17,7 @@ hermes radar discover
 hermes radar setup
 ```
 
-`setup` asks: language, trust level, model fallback, whether to read your habits of the last twelve months on the first start, owner, timezone, quiet hours, Telegram chat and user, which Gmail/Calendar servers or command-line connectors to watch and the address of each account. It writes `plugins.entries.radar.settings` and the `mcp_allowlist`.
+`setup` asks: language, trust level, model fallback, whether to read your habits of the last twelve months on the first start, owner, timezone, quiet hours, where to write to you (the platform, the chat and your user id on it), which Gmail/Calendar servers or command-line connectors to watch and the address of each account. It writes `plugins.entries.radar.settings` and the `mcp_allowlist`.
 
 ### Command-line connectors
 
@@ -44,7 +44,7 @@ Every step Radar proposes has a **class** according to what it changes:
 | `local` | Reversible and private | reply draft in Gmail, branch and draft PR, HTML report, reminder |
 | `external` | Irreversible or visible to third parties | send an email, book, pay, deploy, merge, publish |
 
-The level decides which classes run on their own and which ask first (with buttons on Telegram):
+The level decides which classes run on their own and which ask first (with buttons on Telegram, by a written reply on any other platform):
 
 | Level | `read` | `local` | `external` |
 |---|---|---|---|
@@ -98,7 +98,20 @@ Per task, at most `auto_jobs_per_task` automatic jobs run a day (3 by default) w
 
 Tune by task kind with `trust.overrides`, for instance `{work_item: {local: auto}}` so that incidents prepare PRs even when the level is `cautious`, or `{trip: {local: ask}}` so that trips ask before creating reminders. Change the level whenever you want with `/radar trust <level>` in the chat, from Hermes Desktop (Capabilities → Plugins → radar → Settings → *Trust level*) or by editing `trust_level` in the configuration; that flat value takes precedence over `trust.level`.
 
-Verify the destination from the owner's chat: `/radar verify` (the gateway answers unknown commands itself, which is why verification goes through the host's command registry and not through a Telegram handler).
+### Where Radar writes to you
+
+Radar writes on one messaging platform, the one you name in `setup` (`destination.platform`): any platform your gateway is connected to, such as Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Teams, Google Chat, email or SMS. `setup` also asks for the chat and for your user id on that platform.
+
+Verify the destination from that chat: `/radar verify`. It binds Radar to that chat and that user; a message from anyone else, or from another platform, is never read as an answer. (The gateway answers unknown commands itself, which is why verification goes through the host's command registry.)
+
+How you answer depends on the platform:
+
+| Platform | What you get | How you answer |
+|---|---|---|
+| Telegram | Rich text with buttons, and the task's report as a file | A button, or a written reply to the message |
+| Any other gateway platform | The same words as markdown, with the answers on offer named on a line under the message (`↩ Go ahead · Dismiss · Remind me tomorrow`) | A written reply to the message, in your own words |
+
+A written reply is matched to its notice by the message it quotes, so answering needs a platform with replies or threads; on one without them (SMS, IRC) the notices still arrive, and you answer from the Desktop panel or by asking the agent. Native buttons outside Telegram and a Hermes Bot Chat as the destination are not supported yet. To move to another platform, change `destination.platform`, the chat and the user id (or run `setup` again) and send `/radar verify` from the new chat.
 
 ## 3. Gmail: polling or push
 
@@ -145,7 +158,7 @@ Answer any notice with what you want changed and Radar stores it as a scoped pre
 
 One hour after starting, and then every 24 h, Radar looks for patterns in the signals (mail, GitHub, chat turns, job results). When it finds one worth automating you get an "Automate" proposal in the summary (it never runs on its own); accepting it creates a host cron that delivers in your chat and whose outputs come back to the radar; dismissing it silences it. `/radar patterns` shows what was detected.
 
-The Hermes Desktop panel loads on its own with the package linked in `~/.hermes/plugins/radar` (Capabilities → Plugins → Rescan if it does not show up; the plugin must be in `plugins.enabled` for its backend to mount). It shows the tasks by status as object cards (boarding pass, receipt, PR, calendar leaf, label, dial), with a side drawer for the detail: thread, proposals with the same buttons as Telegram, drafts, report, and below patterns, preferences and the card kinds (the ones the model designs for repeated tasks can be disabled there).
+The Hermes Desktop panel loads on its own once the plugin is installed (Capabilities → Plugins → Rescan if it does not show up; the plugin must be in `plugins.enabled` for its backend to mount). It shows the tasks by status as object cards (boarding pass, receipt, PR, calendar leaf, label, dial), with a side drawer for the detail: thread, proposals with the same buttons as Telegram, drafts, report, and below patterns, preferences and the card kinds (the ones the model designs for repeated tasks can be disabled there).
 
 ## 5. Check
 
@@ -161,7 +174,7 @@ hermes radar simulate scenarios/failed-payment.yaml   # a situation through the 
 
 `simulate` is the way to try a situation before it happens: write it as a scenario (see `scenarios/`), run it and read what Radar would judge, hold back and say. It works on a copy of your store, with your facts, habits and preferences, and with the real model; a `replies:` list lets you answer the message it would have sent and see what it learns and does next.
 
-On Telegram: every new task with gaps arrives as a notice with two numbered blocks and buttons. "Confirm for me" are yes/no questions ("Is size 48 correct?"): "Yes, correct" closes the doubt and "No, that's wrong" leaves it marked for you to say what is wrong. "I can do" are steps Radar would do for you: "Go ahead" launches them (or asks your authorisation if they reach third parties) and "Dismiss" withdraws them and they are not proposed again. The buttons at the bottom act on the whole task: "Already resolved" closes it, "Remind me tomorrow" parks it until the first summary of the next day and "Stop notifying about this" silences it for good (it is reactivated from the panel). You can also answer the notice in your own words: "yes", "the 2nd", "tomorrow", "already done" or any nuance; what is not a direct order reaches the agent in the chat with the pending proposals in its context (`radar_resolve`).
+In your chat: every new task with gaps arrives as a notice with two numbered blocks and, on Telegram, buttons (on other platforms the same answers are named under the message and you reply in words). "Confirm for me" are yes/no questions ("Is size 48 correct?"): "Yes, correct" closes the doubt and "No, that's wrong" leaves it marked for you to say what is wrong. "I can do" are steps Radar would do for you: "Go ahead" launches them (or asks your authorisation if they reach third parties) and "Dismiss" withdraws them and they are not proposed again. The buttons at the bottom act on the whole task: "Already resolved" closes it, "Remind me tomorrow" parks it until the first summary of the next day and "Stop notifying about this" silences it for good (it is reactivated from the panel). You can also answer the notice in your own words: "yes", "the 2nd", "tomorrow", "already done" or any nuance; what is not a direct order reaches the agent in the chat with the pending proposals in its context (`radar_resolve`).
 
 ## 6. Migrate from mail-intelligence
 
