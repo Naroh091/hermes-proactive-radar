@@ -429,7 +429,8 @@ async def process_bundle(rt: Any, bundle: dict[str, Any], now_dt: datetime) -> d
         # the next summary and never only through a new step that the caps may hold.
         from ..delivery.dispatch import notify_job_result
 
-        summary["result_notice"] = notify_job_result(store, config, task_id=existing_task["id"], signal=kept[-1], now_dt=now_dt)
+        summary["result_notice"] = notify_job_result(store, config, task_id=existing_task["id"], signal=kept[-1], now_dt=now_dt,
+                                                     message=str((planned or {}).get("message") or ""))
     if existing_task is not None:
         for signal in kept:
             try:

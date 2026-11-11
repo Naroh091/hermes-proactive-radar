@@ -469,10 +469,15 @@ def report_document(store: Any, task: dict[str, Any], *, language: str, now_dt: 
     return {"path": str(path), "filename": "informe.html" if str(language).startswith("es") else "report.html", "caption": t(language, "report_file")}
 
 
-def notify_job_result(store: Any, config: dict[str, Any], *, task_id: str, signal: dict[str, Any], now_dt: datetime) -> bool:
+def notify_job_result(store: Any, config: dict[str, Any], *, task_id: str, signal: dict[str, Any], now_dt: datetime,
+                      message: str = "") -> bool:
     """Tell the owner how a step they approved ended, even when there is nothing left to decide.
 
-    Bypasses the daily cap: the button answer promised a result.
+    Bypasses the daily cap: the button answer promised a result. ``message`` is what the planner wrote for the owner
+    after reading that result: when there is one it is the whole notice, in prose, as every other message is. On
+    2026-11-11 a cancellation that hit a login wall came back as a block (the receipt quoted again, the checklist, five
+    bullet points with an internal key in them) and never said what the planner had written: that it would retry by
+    email code. A step that fell short is marked with ⚠️ whatever the prose says.
     """
     if config.get("mode") != "active" or not config.get("notifications", {}).get("enabled") or not _destination_ok(store):
         return False
@@ -495,8 +500,12 @@ def notify_job_result(store: Any, config: dict[str, Any], *, task_id: str, signa
     findings = list(meta.get("findings") or [])[:5] + [f"✔ {e}" for e in (meta.get("effects") or [])[:5]] + list(meta.get("refs") or [])[:3]
     if anomaly:
         findings.append(f"⚠ {anomaly}")
-    payload = build_notice(task, [], language=language, message=f"{headline}\n{signal.get('snippet') or ''}".strip(), findings=findings,
-                           context=thread_context(store, task["id"], config, now_dt=now_dt), now_dt=now_dt, config=config)
+    prose = " ".join(str(message or "").split())
+    if prose:
+        payload = build_interrupt(task, [], prose if done else f"⚠️ {prose}", language=language, now_dt=now_dt, config=config)
+    else:
+        payload = build_notice(task, [], language=language, message=f"{headline}\n{signal.get('snippet') or ''}".strip(), findings=findings,
+                               context=thread_context(store, task["id"], config, now_dt=now_dt), now_dt=now_dt, config=config)
     payload["urgent"] = not done
     payload["exempt"] = True
     if task.get("kind") == "work_item" and status == "succeeded" and (meta.get("findings") or meta.get("effects")):

@@ -10,10 +10,11 @@ from uuid import uuid4
 from ..i18n import t
 from ..jobs.service import start_or_wait
 from ..trust import describe, level_summary
+from .brief import agent_brief
 from .feedback import understand
 from .dispatch import draft_document
 from .notice import CALLBACK_PREFIX, DRAFT_INLINE, MAX_LABEL, TASK_PREFIX, decision_buttons, edited_text, fit, proposal_buttons, task_buttons
-from .responses import OPEN_PROPOSAL, act_on_task, record_owner_words, resolve_reply, respond_to_proposal
+from .responses import OPEN_PROPOSAL, act_on_task, local_now, record_owner_words, resolve_reply, respond_to_proposal
 from .snooze import deadline_of, later_button
 
 log = logging.getLogger(__name__)
@@ -240,6 +241,11 @@ async def handle_text_reply(rt: Any, event: Any) -> dict[str, Any] | None:
     # settles trivial replies and stands in when the model cannot.
     intent = await understand(getattr(rt, "gate", None), text, outbox_row=row, store=rt.store, language=rt.config.get("owner", {}).get("language", "es"))
     actor = f"{home}:{getattr(source, 'user_id', '')}"
+    spoken_later = intent.get("intent") == "later" and intent.get("source") == "model"
+    if spoken_later:
+        # More than the bare «later» the floor settles: a day, an hour, a condition. The agent reads it and snoozes the
+        # task for the moment they named; the reader has no field for that and is not given one.
+        return to_agent(rt, row, text)
     result = resolve_reply(rt.store, rt.config, outbox_row=row, intent=intent, actor=actor, now_dt=rt.clock(), note=text)
     from .learn import learn_from_reply
 
@@ -255,9 +261,9 @@ async def handle_text_reply(rt: Any, event: Any) -> dict[str, Any] | None:
         record_owner_words(rt.store, outbox_row=row, text=text, actor=actor, channel=home, now_dt=rt.clock(),
                            language=rt.config.get("owner", {}).get("language", "es"))
         if result.get("outcome") == "unclear":
-            return None
+            return to_agent(rt, row, text)
     if result.get("outcome") == "question":
-        return None  # a question for the agent, not an answer
+        return to_agent(rt, row, text)  # a question for the agent, not an answer
     ack = str(result.get("text") or "")
     if ack and rt.transports.available(home):
         try:
@@ -265,6 +271,16 @@ async def handle_text_reply(rt: Any, event: Any) -> dict[str, Any] | None:
         except Exception as exc:
             log.debug("reply ack not sent: %s", exc)
     return {"action": "skip", "reason": f"radar reply handled: {result.get('outcome')}"}
+
+
+def to_agent(rt: Any, row: dict[str, Any], text: str) -> dict[str, Any] | None:
+    """Hand the owner's reply to the chat agent with what it answers in front of it. Without the brief the agent got
+    the bare words and had to guess which task they were about."""
+    try:
+        return {"action": "rewrite", "text": agent_brief(rt.store, rt.config, row, text, local_now(rt.config, rt.clock()))}
+    except Exception as exc:
+        log.warning("reply passed on without its brief: %s", exc)
+        return None
 
 
 def session_identity(getenv: Callable[[str, str], str] | None = None) -> dict[str, str]:

@@ -261,7 +261,20 @@ def _answer_ask(store: Any, proposal: dict[str, Any], *, option: str, actor: str
         metadata={"option": option, "channel": channel, "fact": key}, now=now,
     )
     _engaged(store, task_id, "answered", now_dt, language=language)
-    return {"outcome": "answered", "text": t(language, "ask_recorded", value=value), "proposal": store.get_proposal(proposal["id"])}
+    return {"outcome": "answered", "text": _ack(options[index], language, value), "proposal": store.get_proposal(proposal["id"])}
+
+
+ACK_LIMIT = 180  # it travels as a toast (200 characters) and as the last line of the notice
+
+
+def _ack(option: dict[str, Any], language: str, value: str) -> str:
+    """What Radar says back to an answer: the sentence the planner wrote for that option, in the owner's language and
+    in its own words, or a plain «Noted» when there is none. The fixed text used to promise «I'll report back» after
+    every answer, also the ones that led nowhere (2026-11-11)."""
+    written = " ".join(str(option.get("ack") or "").split())
+    if written and len(written) <= ACK_LIMIT and "<" not in written and ">" not in written:
+        return written
+    return t(language, "ask_recorded", value=value)
 
 
 def _close_check_task(store: Any, task_id: str, now: str) -> None:
@@ -381,7 +394,10 @@ def act_on_task(store: Any, config: dict[str, Any], *, task_id: str, action: str
         outcome, text = "reopened", t(language, "task_reopened", title=title)
         _engaged(store, task_id, "reopen", now_dt, language=language)
     elif action in {"later", "snooze"}:
-        until_dt = snooze_until(now_dt, config, deadline_of(task, now_dt))
+        # The moment the owner named (the chat agent passes it as ``until``) wins over «tomorrow»: on 2026-11-11
+        # «remind me on December 10» was answered «I'll remind you tomorrow at 08:00». The button, a bare «later» and
+        # a moment that is past, unreadable or absurdly far keep the usual snooze.
+        until_dt = named_moment(until, now_dt, config) or snooze_until(now_dt, config, deadline_of(task, now_dt))
         if until_dt is None:
             return {"outcome": "kept", "text": t(language, "snooze_no_time", title=title)}
         until = iso(until_dt)
@@ -424,6 +440,33 @@ def act_on_task(store: Any, config: dict[str, Any], *, task_id: str, action: str
         metadata={"action": action, "actor": actor, **({"until": until} if until else {}), **({"note": note[:200]} if note else {})}, now=now,
     )
     return {"outcome": outcome, "text": text}
+
+
+NAMED_SNOOZE_MAX = timedelta(days=366)
+
+
+def local_now(config: dict[str, Any], now_dt: datetime) -> datetime:
+    return now_dt.astimezone(_tz(config))
+
+
+def named_moment(value: Any, now_dt: datetime, config: dict[str, Any]) -> datetime | None:
+    """The moment the owner asked to be reminded at, in their timezone, or None when there is none to honour. A day
+    with no hour is that day at 08:00; a moment with no zone is local; what is not ahead of now, or more than a year
+    away, is not a snooze."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    tz = _tz(config)
+    if len(text) <= 10:
+        moment = moment.replace(hour=8, minute=0)
+    moment = moment.replace(tzinfo=tz) if moment.tzinfo is None else moment.astimezone(tz)
+    if moment <= now_dt or moment - now_dt > NAMED_SNOOZE_MAX:
+        return None
+    return moment
 
 
 def _parse_until(value: Any) -> datetime | None:

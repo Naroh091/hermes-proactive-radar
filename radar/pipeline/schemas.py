@@ -119,7 +119,7 @@ PLAN_SCHEMA = _obj(
             "when": _STR,
             "awaits": _STR,  # the external event the step depends on; "when" is then the fallback moment
             "urgency": {"type": "string", "enum": ["low", "normal", "high"]},
-            "options": _arr(_obj({"id": _STR, "label": _STR})),
+            "options": _arr(_obj({"id": _STR, "label": _STR, "ack": _STR})),  # ack: for "ask", the word said back when that answer is tapped
             "fact": _obj({"key": _STR, "yes": _STR, "no": _STR}),  # only for "ask": what each answer records
             "then": {"type": "string", "enum": ["step", "nothing"]},  # for "ask": does an answer lead anywhere?
             "basis": {"type": "string", "enum": DRAFT_BASES + [""]},  # for a mail step: why the draft is worth sending

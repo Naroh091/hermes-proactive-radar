@@ -50,7 +50,9 @@ def record_turn(store: Any, config: dict[str, Any], event: dict[str, Any], now_d
     platform = str(event.get("platform") or "")
     if platform in EXCLUDED_PLATFORMS or automated_process():
         return False
-    user_text = redact(_text(event.get("user_message")).strip())
+    from ..delivery.brief import strip_brief
+
+    user_text = redact(strip_brief(_text(event.get("user_message"))).strip())  # a reply passed on by Radar: their words only
     assistant_text = redact(_text(event.get("assistant_response")).strip())
     if not user_text:
         return False

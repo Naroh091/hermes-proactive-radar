@@ -364,14 +364,16 @@ def test_owner_approved_job_result_always_reaches_the_owner(store):
     claimed = store.claim_queued_jobs(now, "2026-10-19T10:10:00Z", 2)[0]
     record_job_outcome(store, cfg, job=claimed, outcome=JobOutcome("succeeded", summary="CNAME creado y verificado.", result={"effects": ["CNAME mapa-electoral creado"], "findings": ["resuelve ya"]}), now_dt=NOW)
     # The planner finds nothing left to decide: digest, no proposals. The owner still gets the result.
-    plan = plan_answer(task_match={"decision": "advances", "task_id": "t1", "why": "job"}, proposals=[], notify={"disposition": "digest", "reason": "done"})
+    plan = plan_answer(task_match={"decision": "advances", "task_id": "t1", "why": "job"}, proposals=[], notify={"disposition": "digest", "reason": "done"},
+                       message="CNAME creado y verificado: mapa-electoral ya resuelve.")
     rt = _runtime(store, cfg, FakeLlm({"radar.plan": [plan]}))
     bundle = store.claim_signal_bundles(now, "2026-10-19T10:10:00Z", 5)[0]
     outcome = asyncio.run(process_bundle(rt, bundle, NOW))
     assert outcome["result_notice"] is True
     notice = store.list_outbox(limit=5)[0]
-    assert notice["kind"] == "notice" and "Resultado del paso que autorizaste" in notice["payload"]["text"] and "CNAME creado y verificado" in notice["payload"]["text"]
-    assert "✔ CNAME mapa-electoral creado" in notice["payload"]["text"]
+    # Told in the planner's own words after reading the result, as every message is: no block of findings (2026-11-11).
+    assert notice["kind"] == "notice" and notice["payload"]["text"] == "CNAME creado y verificado: mapa-electoral ya resuelve."
+    assert notice["payload"]["exempt"] is True
 
 
 def test_drafted_replies_stay_on_the_task_and_show_in_the_notice(store):

@@ -132,7 +132,8 @@ def test_a_reply_that_is_not_a_plain_order_reaches_the_agent(store):
     def event(text):
         return SimpleNamespace(source=SimpleNamespace(platform="telegram", user_id="7", chat_id="42"), reply_to_message_id="msg-1", text=text)
 
-    assert asyncio.run(handle_text_reply(rt, event("mejor restríngelo al equipo de datos"))) is None  # the agent still answers the owner …
+    passed = asyncio.run(handle_text_reply(rt, event("mejor restríngelo al equipo de datos")))  # the agent still answers the owner …
+    assert passed["action"] == "rewrite" and passed["text"].endswith("mejor restríngelo al equipo de datos")
     assert store.get_proposal("p1")["status"] == "sent"
     # … and the task hears the owner's words: a user_reply signal bound to it, judged like a button answer
     # (2026-11-03: «espera a que respondan» fell to the agent alone and the task kept asking).
@@ -142,7 +143,8 @@ def test_a_reply_that_is_not_a_plain_order_reaches_the_agent(store):
     assert words["meta"]["task_id"] == "t1" and words["meta"]["answer"] == "mejor restríngelo al equipo de datos" and words["meta"]["free_text"] is True
     assert words["meta"]["question"].startswith("🛠️ Decidir el alcance Puedo hacer: 1. Restringir") and words["meta"]["proposal_id"] == "p1"  # the notice, as plain text
     assert _bound_task_id([words]) == "t1" and _synthetic_extract(words, store.get_task("t1"))["owner_answer"]["answer"] == "mejor restríngelo al equipo de datos"
-    assert asyncio.run(handle_text_reply(rt, event("¿has comprobado los permisos?"))) is None  # a question for the agent, not an answer
+    asked = asyncio.run(handle_text_reply(rt, event("¿has comprobado los permisos?")))  # a question for the agent, not an answer
+    assert asked["action"] == "rewrite" and asked["text"].endswith("¿has comprobado los permisos?")
     assert len([s for s in store.list_signals() if s["kind"] == "user_reply"]) == 1
     assert [r["decision_code"] for r in store.list_audit(limit=5) if r["event_type"] == "owner_response"][:1] == ["words"]
     handled = asyncio.run(handle_text_reply(rt, event("no")))
@@ -185,3 +187,122 @@ def test_a_written_yes_or_no_answers_a_question_as_such(store):
     assert classify("no")["intent"] == "reject" and classify("no, descártalo")["intent"] == "reject"
     wrong = resolve_reply(store, cfg, outbox_row=row, intent=classify("no"), actor="telegram:7", now_dt=NOW, note="no")
     assert wrong["outcome"] == "accepted" and wrong["text"].startswith("Anotado como error") and store.get_task("c1")["status"] == "needs_user"
+
+
+def test_the_step_an_answer_leads_to_is_put_to_the_owner_at_once(store):
+    """2026-11-11: the owner tapped «cancel it» on a question, the plan answered with «cancel the subscription?» and it
+    waited for the summary under a notice that had just said «I'll carry on from there and report back»."""
+    from radar.delivery.responses import respond_to_proposal
+
+    cfg = active_config()
+    verify_destination(store)
+    ask = {"title": "¿Mantengo el plan o lo cancelo?", "rationale": "", "action_class": "read", "operation": "ask", "when": "", "urgency": "normal",
+           "options": [{"id": "mantener", "label": "Mantener"}, {"id": "cancelar", "label": "Cancelar"}]}
+    first = _apply(store, cfg, plan_answer(proposals=[ask], notify={"disposition": "notify_now", "urgency": "now", "importance": "high", "reason": "x"}))
+    assert dispatch(store, cfg, NOW)["notices"] == 1
+    question = next(p for p in store.list_proposals(task_id=first.task_id) if p["operation_id"] == "ask")
+    cancel = {"title": "Cancelar la suscripción", "rationale": "", "action_class": "external", "operation": "web.act", "when": "", "urgency": "normal",
+              "options": [{"id": "cancelar", "label": "Cancelar suscripción"}, {"id": "no", "label": "No cancelar"}]}
+    later = plan_answer(task_match={"decision": "advances", "task_id": first.task_id, "why": "same receipt"}, proposals=[cancel],
+                        notify={"disposition": "digest", "urgency": "this_week", "importance": "normal", "reason": "x"})
+
+    def plan_from(signals):
+        return act.apply(store, cfg, signals=signals, extract=extract_step.validate_extract(extract_answer()),
+                         plan=reason.validate_plan(later), now_dt=NOW + timedelta(minutes=1), preferences=[])
+
+    assert respond_to_proposal(store, cfg, proposal_id=question["id"], option="cancelar", actor="telegram:1", now_dt=NOW)["outcome"] == "answered"
+    [answer] = [s for s in store.list_signals() if s["kind"] == "user_reply"]
+    told = plan_from([answer])
+    step = next(p for p in store.list_proposals(task_id=first.task_id) if p["operation_id"] == "web.act")
+    assert told.disposition == "notify_now" and step["batch_key"] == "now"
+    assert dispatch(store, cfg, NOW + timedelta(minutes=1))["notices"] == 1
+
+
+def test_the_same_step_without_an_answer_still_waits_for_the_summary(store):
+    cfg = active_config()
+    verify_destination(store)
+    cancel = {"title": "Cancelar la suscripción", "rationale": "", "action_class": "external", "operation": "web.act", "when": "", "urgency": "normal",
+              "options": [{"id": "cancelar", "label": "Cancelar suscripción"}, {"id": "no", "label": "No cancelar"}]}
+    held = _apply(store, cfg, plan_answer(proposals=[cancel], notify={"disposition": "digest", "urgency": "this_week", "importance": "normal", "reason": "x"}))
+    step = next(p for p in store.list_proposals(task_id=held.task_id) if p["operation_id"] == "web.act")
+    assert held.disposition == "digest" and step["batch_key"] == "digest"
+
+
+def test_an_answer_is_acknowledged_in_the_planners_own_words_for_that_answer(store):
+    """The fixed «Noted… I'll carry on and report back» followed every answer, in two languages only and also when the
+    answer led nowhere (2026-11-11). The planner now writes, with the question, what it says back to each answer."""
+    from radar.delivery.responses import respond_to_proposal
+
+    cfg = active_config()
+    verify_destination(store)
+    ask = {"title": "Tu peux être là pour la nouvelle livraison ?", "rationale": "", "action_class": "read", "operation": "ask", "when": "", "urgency": "normal",
+           "options": [{"id": "present", "label": "J'y serai", "ack": "Parfait, je te préviens dès que le livreur confirme l'heure."},
+                       {"id": "relais", "label": "Point relais", "ack": "<b>D'accord</b>"}],
+           "fact": {"key": "presence_livraison", "yes": "présent", "no": "point relais"}, "then": "step"}
+    step = {"title": "Réserver", "rationale": "", "action_class": "external", "operation": "web.act", "when": "", "urgency": "normal",
+            "options": [{"id": "do", "label": "Réserver", "ack": "ignored on a step"}]}
+    plan = reason.validate_plan(plan_answer(proposals=[ask, step], notify={"disposition": "notify_now", "urgency": "now", "importance": "high", "reason": "x"}))
+    asked, other = plan["proposals"][0], plan["proposals"][1]
+    assert asked["options"][0]["ack"].startswith("Parfait") and "ack" not in other["options"][0]
+    long = reason.validate_plan(plan_answer(proposals=[{**ask, "options": [{"id": "a", "label": "A", "ack": "mot " * 200}, {"id": "b", "label": "B", "ack": 7}]}]))
+    assert len(long["proposals"][0]["options"][0]["ack"]) <= reason.ACK_MAX and "ack" not in long["proposals"][0]["options"][1]
+
+    first = act.apply(store, cfg, signals=[], extract=extract_step.validate_extract(extract_answer()), plan=plan, now_dt=NOW, preferences=[])
+    question = next(p for p in store.list_proposals(task_id=first.task_id) if p["operation_id"] == "ask")
+    said = respond_to_proposal(store, cfg, proposal_id=question["id"], option="present", actor="telegram:1", now_dt=NOW)
+    assert said["outcome"] == "answered" and said["text"] == "Parfait, je te préviens dès que le livreur confirme l'heure."
+
+
+def test_an_answer_without_usable_words_gets_a_plain_noted_that_promises_nothing(store):
+    from radar.delivery.responses import _ack
+
+    assert _ack({"id": "a", "label": "A"}, "es", "presente") == "Anotado: presente."
+    assert _ack({"id": "a", "label": "A", "ack": "<b>Vale</b>"}, "es", "presente") == "Anotado: presente."  # markup never travels
+    assert _ack({"id": "a", "label": "A", "ack": "x" * 400}, "en", "present") == "Noted: present."
+    assert _ack({"id": "a", "label": "A", "ack": "  De acuerdo,\n lo cancelo antes del día 11. "}, "es", "cancelar") == "De acuerdo, lo cancelo antes del día 11."
+
+
+def test_a_reminder_asked_for_a_named_day_is_set_for_that_day_not_for_tomorrow(store):
+    """2026-11-11: «recuérdamelo el 10 de diciembre» was read as a plain «later» and answered «te lo recuerdo mañana a
+    las 08:00». Such a reply now goes to the chat agent, whose tool snoozes the task until the moment they named."""
+    from radar.delivery.responses import named_moment
+
+    cfg = active_config()
+    now = "2026-10-19T10:00:00Z"
+    store.create_task(task_id="r1", kind="purchase", title="Recibo Starter", summary="", entities={}, expectations=[], checklist=[], now=now)
+    said = act_on_task(store, cfg, task_id="r1", action="later", actor="agent", now_dt=NOW, until="2026-12-10")
+    task = store.get_task("r1")
+    assert said["outcome"] == "snoozed" and task["status"] == "snoozed" and task["snoozed_until"] == "2026-12-10T07:00:00Z"  # 08:00 in Madrid
+    assert "10/12" in said["text"] and "mañana" not in said["text"]
+    # An hour is kept; what is past, unreadable or a year away falls back to the usual «tomorrow».
+    assert named_moment("2026-10-23T17:30", NOW, cfg).isoformat() == "2026-10-23T17:30:00+02:00"
+    assert named_moment("2026-10-01", NOW, cfg) is None and named_moment("el viernes", NOW, cfg) is None and named_moment("2028-01-01", NOW, cfg) is None
+    store.create_task(task_id="r2", kind="purchase", title="Otro recibo", summary="", entities={}, expectations=[], checklist=[], now=now)
+    plain = act_on_task(store, cfg, task_id="r2", action="later", actor="telegram:7", now_dt=NOW, until="2026-10-01")
+    assert plain["outcome"] == "snoozed" and store.get_task("r2")["snoozed_until"].startswith("2026-10-2")
+
+
+def test_a_reply_that_is_no_plain_answer_reaches_the_agent_with_the_notice_in_front_of_it(store):
+    from radar.delivery.brief import CLOSE, OPEN, agent_brief, strip_brief
+    from radar.delivery.responses import local_now
+    from radar.delivery.telegram_ui import to_agent
+
+    cfg = active_config()
+    now = "2026-10-19T10:00:00Z"
+    store.create_task(task_id="b1", kind="purchase", title="Recibo Starter", summary="", entities={}, expectations=[], checklist=[], now=now)
+    store.create_task_proposal(proposal_id="pb1", task_id="b1", title="Cancelar la suscripción", reason_text="", action_class="external", operation_id="web.act",
+                               params={}, options=[{"id": "cancelar", "label": "Cancelar"}, {"id": "no", "label": "No cancelar"}],
+                               urgency="normal", expires_at="2026-10-22T10:00:00Z", fingerprint="pb1", now=now)
+    row = {"task_id": "b1", "kind": "notice", "payload": {"proposal_ids": ["pb1"], "task_id": "b1", "text": "<b>¿Procedo</b> con la cancelación?"}}
+    words = "recuérdamelo el 10 de diciembre"
+    brief = agent_brief(store, cfg, row, words, local_now(cfg, NOW))
+    assert brief.startswith(OPEN) and brief.endswith(words) and CLOSE in brief
+    assert "Task b1" in brief and "¿Procedo con la cancelación?" in brief and "<b>" not in brief
+    assert "proposal pb1" in brief and "cancelar (Cancelar)" in brief and "2026-10-19T12:00 Monday (Europe/Madrid)" in brief
+    assert strip_brief(brief) == words and strip_brief(words) == words and strip_brief(OPEN + " never closed") == OPEN + " never closed"
+    rt = SimpleNamespace(store=store, config=cfg, clock=lambda: NOW)
+    assert to_agent(rt, row, words) == {"action": "rewrite", "text": brief}
+    # What is recorded as the owner's turn is their words, never the brief.
+    assert record_turn(store, cfg, {"session_id": "s9", "turn_id": "t", "platform": "telegram", "user_message": brief, "assistant_response": "Hecho.", "model": "m"}, NOW)
+    [turn] = [s for s in store.list_signals() if s["kind"] == "session_turn"]
+    assert OPEN not in (turn["title"] + turn["snippet"]) and words in turn["snippet"]

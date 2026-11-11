@@ -266,7 +266,12 @@ Principles, which decide every field below:
    recorded and never raised: no question, no news, no step; the owner sees it in the panel.
    "ask" (read) is a question only the owner can answer, with exactly two options whose labels are the two
    answers ("Yes, we run it" / "No, it is external") and a fact {{key, yes, no}} with the value to
-   record for each; its title is the question; the principles say when one is allowed. then: "step" when
+   record for each; its title is the question; the principles say when one is allowed. Each option of an
+   "ask" also carries ack: the one short sentence you would say back the moment the owner picks that answer,
+   in the owner's language and in your own voice, as a person would in a chat ("Got it, I'll cancel it
+   before the 11th", "Fine, it stays as it is"). It acknowledges that answer in particular and says what
+   happens next only if something does: never promise to report back when that answer leads nowhere, never
+   repeat the question, never the same stock phrase every time. On any other step ack is "". then: "step" when
    at least one answer leads to a step you will take or propose next (a reply, a booking, a lookup, securing
    an account); "nothing" when either answer only closes or updates the task (whether a parcel arrived, which
    card they will bring, whether someone will be home): such a question is never sent, the task waits for
@@ -431,7 +436,8 @@ intent is one of: approve (an explicit instruction to carry out the proposed ste
 question), reject (no, do not do it, discard it), later (remind me later, tomorrow), done (the owner already did it or it is
 settled), edit_request (change the text or the plan before doing it), preference (a lasting rule about how such things should
 be surfaced), question (they ask the assistant something), thanks, instruction (an order about something else the assistant
-should do: delete this, close that, check whether…, forget this topic), unclear.
+should do: delete this, close that, check whether…, forget this topic; also a reminder asked for a particular moment or on a
+condition, "remind me on December 10", "Friday morning", "once they answer": later is only the bare "not now"), unclear.
 Rules. A conditional "if" is not a yes: "delete it if it exists" is an instruction, not approval. A negation in the same clause
 as an approval cue makes the reply reject or unclear, never approve. A question, a greeting, a thank-you or an edit request
 never approves. When the reply picks one of a decision's offered answers, by meaning rather than exact wording ("we run it

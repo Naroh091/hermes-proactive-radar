@@ -694,6 +694,15 @@ def apply(
     high_check = any(c.get("severity") == "high" for c in asks) and not owner_followup and not conversation and not own_doing  # the chat rides the reminder
     if high_check and disposition == "digest":
         disposition, urgency = "notify_now", "now"
+    # The owner just answered a question of this task: the decision their answer leads to is put to them at once, not
+    # in the next reminder. On 2026-11-11 «cancel it» led to «cancel the subscription?», which waited for the summary
+    # under a notice that had just said «I'll carry on from there and report back».
+    answered_now = any(s.get("kind") == "user_reply" and (s.get("meta") or {}).get("proposal_id") for s in signals)
+    owner_steps = [p for p in plan.get("proposals") or [] if p.get("action_class") != "read" or p.get("operation") == "ask"]
+    answer_step = (answered_now and bool(owner_steps) and disposition == "digest" and not terminal and not kept_closed
+                   and not (extract or {}).get("manipulation"))
+    if answer_step:
+        disposition, urgency = "notify_now", "now"
     read_steps = [p for p in plan.get("proposals") or [] if p.get("action_class") == "read" and p.get("operation") not in ("check", "inform")]
     if (escalation == "handle" and read_steps and not owner_followup and disposition != "silent" and not high_check
             and may_auto_run(config.get("trust") or {}, "read", kind=task.get("kind"), operation_id=read_steps[0].get("operation") or None)):
@@ -705,7 +714,7 @@ def apply(
     proposal_ids: list[str] = []
     if not terminal or inform_only:  # news about a task that just completed still reaches the owner
         batch_key = "now" if owner_followup else {"notify_now": "now", "digest": "digest", "silent": "silent"}[disposition]
-        if batch_key == "now" and not owner_followup and noticed_recently(store, config, task_id, now_dt):
+        if batch_key == "now" and not owner_followup and not answer_step and noticed_recently(store, config, task_id, now_dt):
             batch_key = "digest"  # the owner was just told about this task (answered or not): no second interruption
         slot = next_delivery(now_dt, "today" if urgency == "now" else urgency, config) if batch_key == "digest" else None
         candidates: list[dict[str, Any]] = []

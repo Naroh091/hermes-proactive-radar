@@ -54,7 +54,8 @@ def test_an_order_in_any_language_goes_to_the_agent_and_the_task_hears_it(store)
     transports = _notice(store, cfg, [("q", "check", [{"id": "ok", "label": "Sí, es correcto"}, {"id": "wrong", "label": "No, es un error"}],
                                        "¿Es correcto que los 529 commits locales se descartaron?")])
     rt = _rt(store, cfg, transports, answers=[{"intent": "instruction", "proposal_index": 0, "reason": "an order, with a conditional if"}])
-    assert asyncio.run(handle_text_reply(rt, _event("Elimina el repo si existe y olvida este tema"))) is None
+    passed = asyncio.run(handle_text_reply(rt, _event("Elimina el repo si existe y olvida este tema")))
+    assert passed["action"] == "rewrite" and passed["text"].endswith("Elimina el repo si existe y olvida este tema")  # to the agent, with the notice
     assert store.get_proposal("q")["status"] == "sent"  # not confirmed
     [words] = [s for s in store.list_signals() if s["kind"] == "user_reply"]
     assert words["meta"]["answer"] == "Elimina el repo si existe y olvida este tema"
@@ -177,3 +178,15 @@ def test_saying_the_offered_action_in_your_own_words_is_that_approval(store):
     cfg = active_config()
     asked = resolve_reply(store, cfg, outbox_row=row, intent={"intent": "question", "proposal_index": 1}, actor="telegram:7", now_dt=NOW, note="Has cancelado el hotel?")
     assert asked["outcome"] == "question"
+
+
+def test_a_reminder_asked_for_a_moment_is_the_agents_to_set_and_a_bare_later_is_not(store):
+    """2026-11-11: «recuérdamelo el 10 de diciembre» was settled as «later» and snoozed until the next morning."""
+    cfg = active_config()
+    transports = _notice(store, cfg, [("q", "web.act", [{"id": "do", "label": "Cancelar"}, {"id": "no", "label": "No"}], "Cancelar la suscripción")])
+    rt = _rt(store, cfg, transports, answers=[{"intent": "later", "proposal_index": 0, "reason": "names a day"}])
+    passed = asyncio.run(handle_text_reply(rt, _event("recuérdamelo el 10 de diciembre, por favor")))
+    assert passed["action"] == "rewrite" and passed["text"].endswith("recuérdamelo el 10 de diciembre, por favor")
+    assert all(t["status"] != "snoozed" for t in store.list_tasks(limit=10))  # nothing snoozed until tomorrow behind their back
+    plain = asyncio.run(handle_text_reply(rt, _event("luego")))  # the floor's bare «later»: settled here, as the button would
+    assert plain["action"] == "skip" and any(t["status"] == "snoozed" for t in store.list_tasks(limit=10))

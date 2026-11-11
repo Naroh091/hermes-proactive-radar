@@ -160,6 +160,9 @@ def settle(plan: dict[str, Any]) -> dict[str, Any]:
     return {**plan, "checks": checks}
 
 
+ACK_MAX = 160  # the word said back to an answer: one short sentence, it also has to fit a toast
+
+
 def validate_plan(raw: Any) -> dict[str, Any]:
     if isinstance(raw, str):
         try:
@@ -184,11 +187,15 @@ def validate_plan(raw: Any) -> dict[str, Any]:
         if not isinstance(item, dict) or not item.get("title"):
             continue
         action_class = item.get("action_class") if item.get("action_class") in ACTION_CLASSES else "read"
+        operation = _clip(item.get("operation"), 60)
         options = []
         for opt in item.get("options") or []:
             if isinstance(opt, dict) and opt.get("id") and opt.get("label"):
-                options.append({"id": _clip(opt["id"], 32).replace(" ", "_").lower(), "label": _clip_words(opt["label"], 60)})
-        operation = _clip(item.get("operation"), 60)
+                option = {"id": _clip(opt["id"], 32).replace(" ", "_").lower(), "label": _clip_words(opt["label"], 60)}
+                ack = _clip_words(opt.get("ack"), ACK_MAX) if operation == "ask" and isinstance(opt.get("ack"), str) else ""
+                if ack:
+                    option["ack"] = ack  # what Radar says back when this answer is tapped; without it, a plain «Noted»
+                options.append(option)
         entry = {
             "title": _clip_words(item.get("title"), 160), "rationale": _clip_words(item.get("rationale"), 500),
             "action_class": "read" if operation == "ask" else action_class, "operation": operation,

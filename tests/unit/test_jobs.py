@@ -337,3 +337,32 @@ def test_a_finished_jobs_session_is_archived_through_the_host_and_never_blocks_t
     assert archive_job_session("local-y", archiver=lambda sid: False) is False
     # Without the host package the default archiver cannot import it: nothing happens, nothing raises.
     assert archive_job_session("local-z") is False
+
+
+def test_the_result_of_an_approved_step_is_told_in_the_planners_prose_not_as_a_block(store):
+    """2026-11-11: «cancel the subscription» hit a login wall and came back as a block (the receipt quoted again, the
+    checklist, five findings with an internal key), without the one thing the planner had written: what it does next."""
+    from conftest import active_config, verify_destination
+    from radar.delivery.dispatch import notify_job_result
+
+    cfg = active_config()
+    verify_destination(store)
+    now = "2026-10-19T10:00:00Z"
+    store.create_task(task_id="t10", kind="purchase", title="Recibo Starter", summary="", entities={}, expectations=[],
+                      checklist=[{"item": "Revisar renovación", "status": "missing", "note": ""}], now=now)
+    store.create_task_proposal(proposal_id="p10", task_id="t10", title="Cancelar Starter antes del 11 dic", reason_text="", action_class="external", operation_id="web.act",
+                               params={}, options=[{"id": "cancelar", "label": "Cancelar"}], urgency="normal", expires_at="2026-10-22T10:00:00Z", fingerprint="fp10", now=now)
+    signal = {"id": "sig10", "kind": "job_result", "title": "[succeeded] Cancelar Starter antes del 11 dic", "snippet": "No se completó la cancelación.",
+              "meta": {"status": "succeeded", "proposal_id": "p10", "job_id": "j10", "action_class": "external", "effects": [], "anomaly": "login wall",
+                       "findings": ["La decisión registrada starter_renovacion=cancelar sigue pendiente"]}}
+    said = "No pude cancelar el Starter: el acceso falló y no hay credencial guardada.\nReintentaré con el código por correo."
+    assert notify_job_result(store, cfg, task_id="t10", signal=signal, now_dt=NOW, message=said)
+    [row] = [r for r in store.list_outbox(limit=10) if r.get("task_id") == "t10"]
+    text = row["payload"]["text"]
+    assert text == "⚠️ No pude cancelar el Starter: el acceso falló y no hay credencial guardada. Reintentaré con el código por correo."
+    assert row["payload"]["urgent"] is True and row["payload"]["exempt"] is True and row["payload"]["buttons"]  # still urgent, still answerable
+    # A step that did its work carries no warning mark.
+    done = {**signal, "id": "sig11", "meta": {**signal["meta"], "job_id": "j11", "anomaly": "", "effects": ["suscripción cancelada"]}}
+    assert notify_job_result(store, cfg, task_id="t10", signal=done, now_dt=NOW, message="Cancelado. El plan sigue activo hasta el 11 de diciembre.")
+    texts = [r["payload"]["text"] for r in store.list_outbox(limit=10) if r.get("task_id") == "t10"]
+    assert "Cancelado. El plan sigue activo hasta el 11 de diciembre." in texts
