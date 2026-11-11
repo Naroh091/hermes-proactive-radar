@@ -17,7 +17,7 @@ Hermes Radar makes [Hermes Agent](https://hermes-agent.nousresearch.com) **proac
   <img src="assets/chat-bug.png" alt="Radar investigates a bug report, prepares a fix and suggests the reply" width="31%">
 </p>
 
-<p align="center"><em>A trip with no hotel, an invoice far above the usual, a bug report already investigated. Sample data.</em></p>
+<p align="center"><em>A trip with no hotel, an invoice far above the usual, a bug report already investigated.</em></p>
 
 ## What is Hermes Radar?
 
