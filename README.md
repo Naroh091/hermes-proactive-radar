@@ -11,6 +11,14 @@
 
 Hermes Radar makes [Hermes Agent](https://hermes-agent.nousresearch.com) **proactive**. Instead of waiting for you to ask, it watches your mail, your calendar, your repositories and your own conversations with the agent, works out what each new thing means for you, and gets on with it: it looks things up, prepares the next step, and writes to you first, on the messaging app you already use with Hermes, when there is news worth telling or a decision only you can take.
 
+<p align="center">
+  <img src="assets/chat-trip.png" alt="Radar notices a trip with flights booked and no hotel, and offers to book it" width="31%">
+  <img src="assets/chat-invoice.png" alt="Radar flags an invoice far above the usual amount and explains why" width="31%">
+  <img src="assets/chat-bug.png" alt="Radar investigates a bug report, prepares a fix and suggests the reply" width="31%">
+</p>
+
+<p align="center"><em>A trip with no hotel, an invoice far above the usual, a bug report already investigated. Sample data.</em></p>
+
 ## What is Hermes Radar?
 
 An assistant that waits to be asked is only as good as your memory: it helps with what you remember to bring up. Radar is the part that does not wait. Nobody has to tell it that a flight was booked, that a customer reported a bug or that an invoice is overdue; it notices, and it starts.
