@@ -78,18 +78,6 @@ try {
   }
 } catch (e) {}
 
-/* live updates over the plugin's /events WebSocket (same as the desktop socket) */
-try {
-  if (SDK.buildWsUrl) {
-    var _connect = function () {
-      var ws = new WebSocket(SDK.buildWsUrl(API + "/events"));
-      ws.onmessage = function () { try { queryClient.invalidateQueries(); } catch (e) {} };
-      ws.onclose = function () { setTimeout(_connect, 4000); };
-    };
-    _connect();
-  }
-} catch (e) {}
-
 if (window.__HERMES_PLUGINS__) window.__HERMES_PLUGINS__.register("radar", RadarPage);
 """
 

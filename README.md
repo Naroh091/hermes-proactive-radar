@@ -53,6 +53,12 @@ Whatever the level, sending email always asks, and paying, booking, deploying an
 
 **It learns from your answers.** Muting a notice teaches Radar about that family of messages. Answering a question stores the answer as a fact, so it is not asked twice. Replying to something Radar thought was minor tells it you care about that sender.
 
+<p align="center">
+  <img src="assets/panel.png" alt="The Radar panel: a trip and a bug fix waiting for your call, a charge being checked, and open tasks drawn as a boarding pass, tickets, a receipt and a calendar page" width="860">
+</p>
+
+<p align="center"><sub>The panel in Hermes Desktop and the web dashboard, with sample data. Each kind of task is drawn as the object it resembles, and what needs your call comes first.</sub></p>
+
 ## Quick start
 
 You need Hermes Agent 0.22 or later with its gateway connected to at least one messaging platform (that is where Radar writes to you), and at least one mail source: a Gmail MCP server, or a command-line connector such as `gws`.

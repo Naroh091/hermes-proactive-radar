@@ -34,7 +34,7 @@ const TEXT = {
     send: 'Enviar', sent: 'Anotado, lo retomo', composePlaceholder: 'Escribe para continuar la tarea…', composeHint: 'Se lo paso al asistente para que siga · ⌘+Enter',
     stackMore: (n) => `${n} parecidas · ver todas`, stackCollapse: (n) => `Apilar ${n}`,
     noPatterns: 'Aún no hay patrones.', noPrefs: 'Sin reglas guardadas.', daysLeft: (n) => (n === 0 ? 'hoy' : n === 1 ? 'mañana' : n < 0 ? `hace ${-n} días` : `faltan ${n} días`),
-    total: 'Total', order: 'Pedido', vendor: 'Vendedor', delivery: 'Entrega', branch: 'rama', pr: 'PR en borrador',
+    depart: 'Salida', back: 'Vuelta', total: 'Total', order: 'Pedido', vendor: 'Vendedor', delivery: 'Entrega', branch: 'rama', pr: 'PR en borrador',
     draftReady: 'borrador listo', every: 'Horario', question: 'Comprobar', kindsHint: 'Los tipos nuevos salen de tareas repetidas.',
     effect: 'Efecto', scope: 'Ámbito', origin: 'Origen', details: 'Detalle', close: 'Cerrar', stateLabel: 'Estado',
     originMap: { explicit: 'tú la creaste', inferred: 'aprendida', imported: 'importada' },
@@ -55,7 +55,7 @@ const TEXT = {
     send: 'Send', sent: 'Noted, I\'ll pick it up', composePlaceholder: 'Write to continue this task…', composeHint: 'Goes to the assistant to continue · ⌘+Enter',
     stackMore: (n) => `${n} similar · show all`, stackCollapse: (n) => `Stack ${n}`,
     noPatterns: 'No patterns yet.', noPrefs: 'No rules saved.', daysLeft: (n) => (n === 0 ? 'today' : n === 1 ? 'tomorrow' : n < 0 ? `${-n} days ago` : `${n} days left`),
-    total: 'Total', order: 'Order', vendor: 'Vendor', delivery: 'Delivery', branch: 'branch', pr: 'draft PR',
+    depart: 'Departs', back: 'Returns', total: 'Total', order: 'Order', vendor: 'Vendor', delivery: 'Delivery', branch: 'branch', pr: 'draft PR',
     draftReady: 'draft ready', every: 'Schedule', question: 'Check', kindsHint: 'New kinds come from repeated tasks.',
     effect: 'Effect', scope: 'Scope', origin: 'Origin', details: 'Detail', close: 'Close', stateLabel: 'Status',
     originMap: { explicit: 'you created it', inferred: 'learned', imported: 'imported' },
@@ -93,7 +93,7 @@ const STYLE = `
 .rd-ghost:focus-visible,.rd-obj:focus-visible{outline:2px solid var(--rd-accent);outline-offset:2px}
 
 .rd-board{display:grid;grid-template-columns:1fr 288px;gap:18px;padding:18px 16px 24px;align-items:start}
-.rd-bento{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:minmax(70px,auto);gap:15px;grid-auto-flow:row dense;min-width:0;align-content:start;align-items:start}
+.rd-bento{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:auto;gap:15px;grid-auto-flow:row;min-width:0;align-content:start;align-items:start}
 .rd-secrow{grid-column:1/-1;display:flex;align-items:center;gap:11px;margin-top:2px}
 .rd-secrow .l{font-family:var(--rd-ui);font-weight:700;font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;color:var(--rd-dim)}
 .rd-secrow .ln{flex:1;height:1px;background:var(--rd-line)}
@@ -317,8 +317,8 @@ function BoardingPass({ task, kind, t, language, score }) {
       jsxs('div', { className: 'rd-route', children: [jsx('span', { children: a.from || '—' }), to ? jsx('span', { className: 'ar', children: '→' }) : null, to ? jsx('span', { children: to }) : null] }),
       jsx('div', { className: 'rd-ttl', style: { fontSize: '.92rem' }, children: task.title }),
       jsxs('div', { className: 'rd-pg', children: [
-        a.depart && a.depart.day ? jsxs('div', { children: [jsx('span', { className: 'k', children: 'Salida' }), jsx('b', { children: `${a.depart.day} ${a.depart.month}${a.depart.time && a.depart.time !== '00:00' ? ' · ' + a.depart.time : ''}` })] }) : null,
-        a.return && a.return.day ? jsxs('div', { children: [jsx('span', { className: 'k', children: 'Vuelta' }), jsx('b', { children: `${a.return.day} ${a.return.month}` })] }) : null,
+        a.depart && a.depart.day ? jsxs('div', { children: [jsx('span', { className: 'k', children: t.depart }), jsx('b', { children: `${a.depart.day} ${a.depart.month}${a.depart.time && a.depart.time !== '00:00' ? ' · ' + a.depart.time : ''}` })] }) : null,
+        a.return && a.return.day ? jsxs('div', { children: [jsx('span', { className: 'k', children: t.back }), jsx('b', { children: `${a.return.day} ${a.return.month}` })] }) : null,
       ] }),
       jsx('div', { className: 'rd-bar', style: { color: '#1b2430' } }),
     ] }),
@@ -782,7 +782,5 @@ export default {
       { id: 'page', area: ROUTES_AREA, data: { path: '/radar' }, render: () => jsx(RadarPage, {}) },
       { id: 'nav', area: SIDEBAR_NAV_AREA, data: { path: '/radar', label: 'Radar', codicon: 'radio-tower' } },
     ])
-    const stop = ctx.socket('/events', () => invalidate())
-    ctx.onDispose(stop)
   },
 }
