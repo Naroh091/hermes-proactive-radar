@@ -1,0 +1,210 @@
+"""Notice text and inline keyboards. Pure formatting, no network."""
+from __future__ import annotations
+
+import html
+from typing import Any
+
+from ..i18n import t
+from ..pipeline.checklists import label as checklist_label
+from .snooze import deadline_of, later_button
+
+MAX_MESSAGE = 3800
+MAX_RATIONALE = 600
+DRAFT_INLINE = 1200  # longer drafts also travel as an attached text file
+MAX_LABEL = 64  # Telegram shows about this much on a phone; longer labels are cut by the client
+MAX_EXCERPT = 320  # quoted text of the latest email in the thread
+CALLBACK_PREFIX = "pa"
+TASK_PREFIX = "pt"
+
+
+def _esc(value: Any) -> str:
+    return html.escape(str(value or ""), quote=False)
+
+
+def fit(value: Any, limit: int) -> str:
+    """Cut prose at a word boundary with an ellipsis; text that already fits is returned untouched."""
+    text = str(value or "")
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1]
+    space = cut.rfind(" ")
+    if space > limit // 2:
+        cut = cut[:space]
+    return cut.rstrip(" ,;:") + "…"
+
+
+def _icon(language: str, kind: str) -> str:
+    return t(language, f"icon_{kind}") if kind in {"trip", "purchase", "work_item", "commitment", "check", "routine", "other"} else t(language, "icon_other")
+
+
+def proposal_buttons(proposal: dict[str, Any], language: str) -> list[dict[str, str]]:
+    options = [o for o in (proposal.get("options") or []) if isinstance(o, dict) and o.get("id") and o.get("label")]
+    if not options:
+        options = [{"id": "do", "label": t(language, "btn_do")}, {"id": "no", "label": t(language, "btn_no")}]
+    if len(options) == 1:
+        options.append({"id": "no", "label": t(language, "btn_no")})
+    row = []
+    for option in options[:3]:
+        data = f"{CALLBACK_PREFIX}:{proposal['id']}:{option['id']}"[:64]
+        row.append({"label": fit(str(option["label"]), MAX_LABEL), "data": data})
+    return row
+
+
+def task_buttons(task_id: str, language: str, *, due_at: Any = None, now_dt: Any = None, config: dict[str, Any] | None = None) -> list[list[dict[str, str]]]:
+    """Whole-task answers, each label naming its effect: close it, hear about it tomorrow morning (later, or not at
+    all, when the deadline is close), never again."""
+    first = [{"label": t(language, "btn_done"), "data": f"{TASK_PREFIX}:{task_id}:done"[:64]}]
+    later = later_button(task_id, language, due_at=due_at, now_dt=now_dt, config=config, prefix=TASK_PREFIX)
+    if later:
+        first.append(later)
+    return [first, [{"label": t(language, "btn_mute"), "data": f"{TASK_PREFIX}:{task_id}:mute"[:64]}]]
+
+
+def build_notice(task: dict[str, Any], proposals: list[dict[str, Any]], *, language: str, message: str = "",
+                 findings: list[str] | None = None, context: dict[str, Any] | None = None, now_dt: Any = None,
+                 config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One notice per task: headline, situation, email context, pending checklist, numbered proposals and buttons.
+    ``now_dt`` and ``config`` size the «later» button to the task's deadline (see :mod:`radar.delivery.snooze`).
+
+    ``context`` is the display-ready thread summary from :mod:`radar.delivery.context` (latest sender,
+    date, subject, excerpt). The model is asked to write to size; if the pieces still exceed Telegram's
+    limit, the longest optional parts (rationales, draft, excerpt, situation) shrink at word boundaries
+    before anything is cut.
+    """
+    budgets = [(MAX_RATIONALE, DRAFT_INLINE, 800, MAX_EXCERPT), (300, 800, 800, 200), (150, 400, 500, 120), (0, 0, 300, 0)]
+    text, buttons, ordered = "", [], []
+    for rationale_cap, draft_cap, situation_cap, excerpt_cap in budgets:
+        text, buttons, ordered = _compose(task, proposals, language=language, message=message, findings=findings, context=context,
+                                          rationale_cap=rationale_cap, draft_cap=draft_cap, situation_cap=situation_cap, excerpt_cap=excerpt_cap,
+                                          now_dt=now_dt, config=config)
+        if len(text) <= MAX_MESSAGE:
+            break
+    text = fit(text, MAX_MESSAGE)
+    return {
+        "text": text, "parse_mode": "HTML", "buttons": buttons, "task_id": task["id"],
+        "proposal_ids": [p["id"] for p in ordered], "kind": "notice",
+    }
+
+
+def context_lines(context: dict[str, Any] | None, *, language: str, excerpt_cap: int = MAX_EXCERPT) -> list[str]:
+    """Header line (sender · date · thread size), subject and a quoted excerpt of the latest email."""
+    if not context or not (context.get("sender") or context.get("excerpt")):
+        return []
+    head = [_esc(context.get("sender") or "")]
+    if context.get("when"):
+        head.append(_esc(context["when"]))
+    if int(context.get("count") or 0) > 1:
+        head.append(_esc(t(language, "thread_count", n=int(context["count"]))))
+    others = [str(o) for o in context.get("others") or [] if o]
+    if others:
+        head.append(_esc(t(language, "thread_with", names=", ".join(fit(o, 30) for o in others))))
+    label = _esc(t(language, "thread"))
+    if context.get("account"):
+        label += f" ({_esc(context['account'])})"
+    lines = [f"<b>{label}:</b> " + " · ".join(part for part in head if part)]
+    if context.get("subject"):
+        lines.append(f"<i>{_esc(t(language, 'subject'))}: {_esc(fit(context['subject'], 120))}</i>")
+    if context.get("excerpt") and excerpt_cap:
+        lines.append(f"<blockquote>{_esc(fit(context['excerpt'], excerpt_cap))}</blockquote>")
+    return lines
+
+
+def _compose(task: dict[str, Any], proposals: list[dict[str, Any]], *, language: str, message: str,
+             findings: list[str] | None, rationale_cap: int, draft_cap: int, situation_cap: int,
+             context: dict[str, Any] | None = None, excerpt_cap: int = MAX_EXCERPT, now_dt: Any = None,
+             config: dict[str, Any] | None = None) -> tuple[str, list[list[dict[str, str]]], list[dict[str, Any]]]:
+    """Returns the text, the keyboard and the proposals in the order they are numbered (news, checks, steps)."""
+    kind = task.get("kind", "other")
+    lines = [f"<b>{_icon(language, kind)} {_esc(task.get('title'))}</b>"]
+    situation = message or next((p.get("params", {}).get("message") for p in proposals if p.get("params", {}).get("message")), "") or task.get("summary", "")
+    if situation:
+        lines.extend(["", _esc(fit(situation, situation_cap))])
+    thread = context_lines(context, language=language, excerpt_cap=excerpt_cap)
+    if thread:
+        lines.extend([""] + thread)
+    missing = [c.get("item") for c in task.get("checklist") or [] if isinstance(c, dict) and c.get("status") == "missing"]
+    if missing:
+        lines.extend(["", f"<b>{_esc(t(language, 'checklist'))}:</b> " + "; ".join(_esc(checklist_label(m, language)) for m in missing[:4])])
+    if task.get("due_at"):
+        lines.append(f"<b>{_esc(t(language, 'due'))}:</b> {_esc(str(task['due_at'])[:16].replace('T', ' '))}")
+    if findings:
+        lines.extend(["", f"<b>{_esc(t(language, 'findings'))}:</b>"] + [f"• {_esc(fit(f, 300))}" for f in findings[:5]])
+    buttons: list[list[dict[str, str]]] = []
+    news = [p for p in proposals if p.get("operation_id") == "inform"][:1]
+    checks = [p for p in proposals if p.get("operation_id") in ("check", "ask")]  # questions the owner answers, not steps
+    steps = [p for p in proposals if p.get("operation_id") not in ("inform", "check", "ask")]
+    ordered: list[dict[str, Any]] = list(news)
+    asks = [p for p in news if (p.get("params") or {}).get("ask")]
+    for item in news:
+        if not situation and item.get("params", {}).get("message"):
+            lines.extend(["", _esc(fit(item["params"]["message"], situation_cap))])
+        if item not in asks:  # a decision is answered in words or with the task buttons, not with «OK»
+            buttons.append(proposal_buttons(item, language))
+    numbered = (checks + steps)[:4]
+    index = 0
+    for header, group in ((t(language, "checks"), checks), (t(language, "proposals"), steps)):
+        group = [p for p in group if p in numbered]
+        if not group:
+            continue
+        lines.extend(["", f"<b>{_esc(header)}:</b>"])
+        for proposal in group:
+            index += 1
+            ordered.append(proposal)
+            rationale = proposal.get("reason_text") or proposal.get("params", {}).get("rationale") or ""
+            text = f"{index}. {_esc(proposal.get('title'))}"
+            if rationale and rationale_cap:
+                text += f" — {_esc(fit(rationale, rationale_cap))}"
+            lines.append(text)
+            row = proposal_buttons(proposal, language)
+            if len(numbered) > 1:
+                row[0]["label"] = fit(f"{index}️⃣ {row[0]['label']}", MAX_LABEL)
+            buttons.append(row)
+    draft = next((p.get("params", {}).get("draft") for p in steps if p.get("params", {}).get("draft")), "")
+    if draft and draft_cap:
+        lines.extend(["", f"<b>{_esc(t(language, 'draft'))}:</b>", f"<i>{_esc(fit(draft, draft_cap))}</i>"])
+    if numbered or asks:
+        lines.extend(["", f"<i>{_esc(t(language, 'reply_hint'))}</i>"])
+    buttons.extend(task_buttons(task["id"], language, due_at=deadline_of(task, now_dt), now_dt=now_dt, config=config))
+    return "\n".join(lines), buttons, ordered
+
+
+def build_interrupt(task: dict[str, Any], proposals: list[dict[str, Any]], text: str, *, language: str, now_dt: Any = None,
+                    config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """An immediate notice in prose: the model's text, then the draft the owner must see if the step carries one, with
+    the keyboard, numbering and proposal order of a classic notice, so replies by number and the buttons keep working.
+    The owner's rule for every message: one thing, said as an assistant would, never a block (2026-10-23)."""
+    _, buttons, ordered = _compose(task, proposals, language=language, message="", findings=None, rationale_cap=0, draft_cap=0,
+                                   situation_cap=0, context=None, excerpt_cap=0, now_dt=now_dt, config=config)
+    body = _esc(tidy_prose(text))
+    draft = next((p.get("params", {}).get("draft") for p in ordered if p.get("params", {}).get("draft")), "")
+    if draft:
+        body += f"\n\n<b>{_esc(t(language, 'draft'))}:</b>\n<i>{_esc(fit(draft, DRAFT_INLINE))}</i>"
+    return {
+        "text": body, "parse_mode": "HTML", "buttons": buttons, "task_id": task["id"],
+        "proposal_ids": [p["id"] for p in ordered], "kind": "notice",
+    }
+
+
+def tidy_prose(text: Any) -> str:
+    return " ".join(str(text or "").replace("\r", "").split("\n")).strip()
+
+
+def decision_buttons(proposal: dict[str, Any], language: str, *, index: int = 0) -> list[dict[str, str]]:
+    """The buttons of one decision in a reminder: a question's answers, or do / see it first / no for an action.
+    A decision made only in words (``params.ask``) has none; ``index`` numbers the first label when several
+    decisions travel in one message."""
+    if (proposal.get("params") or {}).get("ask"):
+        return []
+    row = proposal_buttons(proposal, language)
+    if proposal.get("action_class") == "external" and len(row) == 2:
+        row.insert(1, {"label": t(language, "btn_review_first"), "data": f"{CALLBACK_PREFIX}:{proposal['id']}:review"[:64]})
+    if index:
+        row[0]["label"] = fit(f"{index}️⃣ {row[0]['label']}", MAX_LABEL)
+    return row
+
+
+def edited_text(original: str, outcome: str) -> str:
+    base = original or ""
+    return (fit(base, MAX_MESSAGE - len(outcome) - 4) + "\n\n" + f"<b>{_esc(outcome)}</b>") if outcome else base

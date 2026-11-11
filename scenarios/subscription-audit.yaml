@@ -1,0 +1,40 @@
+# Three recurring charges land together, one with an unannounced price hike.
+# Radar should group them as one subscription-audit subject, flag the hike as the
+# decision (cancel, accept, or claim), and propose cancelling the unused one as an
+# external step with consent — never cancel on its own.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Netflix <info@netflix.example>"
+    subject: "Your Netflix subscription renews 15 Nov: price change to 17.99 EUR/month"
+    body: |
+      Hello Alex, your Netflix Standard subscription renews on 15 November 2026
+      at the new price of 17.99 EUR/month (was 13.99 EUR/month), charged to your
+      Visa ending 0042. Manage or cancel at netflix.com/account before 14 November.
+  - kind: email
+    account: me@example.org
+    from: "Spotify <no-reply@spotify.example>"
+    subject: "Receipt: Spotify Premium 10.99 EUR paid"
+    body: |
+      Hello Alex, we confirm your Spotify Premium payment of 10.99 EUR for
+      November 2026, charged to your Visa ending 0042. Next billing date:
+      5 December 2026. Manage at spotify.com/account.
+  - kind: email
+    account: me@example.org
+    from: "Gym Eurosport <info@eurosportgym.example>"
+    subject: "Receipt: monthly fee 39.00 EUR charged"
+    body: |
+      Hello Alex, your monthly gym fee of 39.00 EUR has been charged to your
+      Visa ending 0042. You have not checked in since August 2026. Cancel your
+      membership at the club desk or at eurosportgym.es/baja with 15 days notice.
+expect:
+  steps:
+    include:
+    - operation: [ask, check]
+    exclude:
+    - {class: external, batch: auto}
+    - title_any: [cancelar, dar de baja]
+      batch: auto
+  messages:
+    any: [Netflix, '17,99']

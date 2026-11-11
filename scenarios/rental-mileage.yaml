@@ -1,0 +1,41 @@
+# A weekend in Gijón with a rental car that includes 100 km a day: Madrid-Gijón and back is about 950 km, so the
+# two-day rental is some 750 km over its allowance. Does Radar notice before the trip?
+phases:
+  - at: 2026-11-07T11:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Booking.com <noreply@booking.example>"
+        subject: "Confirmación: Hotel Abba Playa Gijón, 21-22 nov"
+        body: |
+          Tu reserva está confirmada.
+
+          Hotel Abba Playa Gijón, Gijón (Asturias)
+          Entrada: sábado 21 de noviembre de 2026 (a partir de las 15:00)
+          Salida: domingo 22 de noviembre de 2026 (hasta las 12:00)
+          1 habitación doble, 2 adultos. Desayuno incluido.
+          Número de confirmación: 4471.228.903  Código PIN: 8821
+          Precio total: 148,00 € (pago en el hotel). Cancelación gratuita hasta el 19 de noviembre a las 23:59.
+  - at: 2026-11-07T12:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Europcar <reservas@europcar.example>"
+        subject: "Reserva confirmada 9F2K7A - Madrid Atocha, 21-22 nov"
+        body: |
+          Hola Alex, tu reserva está confirmada.
+
+          Número de reserva: 9F2K7A
+          Recogida: Madrid Estación de Atocha, sábado 21 nov 2026 08:00
+          Devolución: Madrid Estación de Atocha, domingo 22 nov 2026 20:00
+          Vehículo: Peugeot 308 o similar (grupo C), cambio manual
+          Tarifa Flex: 100 km por día incluidos (200 km en total). Kilómetro adicional: 0,30 € + IVA.
+          Combustible: lleno/lleno. Conductor adicional: no.
+          Total: 94,60 € (pagado con Visa terminada en 0042). Cancelación gratuita hasta 48 h antes de la recogida.
+expect:
+  task: {kind: trip}
+  steps:
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    any: [' km', kilómetr, kilometraje]

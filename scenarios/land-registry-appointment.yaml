@@ -1,0 +1,25 @@
+# Land-registry appointment with papers to bring: reference, date, channel and the
+# document list are all in the mail. Radar should file it as a commitment with a
+# due_at, checklist the papers (DNI, escritura, fotos), and fire one timed step
+# the day before — not a reminder thread for each document.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Catastro <no-reply@catastro.meh.example>"
+    subject: "Appointment 12 Nov 10:00: ref. 28082A01400039 — bring DNI, escritura and photos"
+    body: |
+      Hello Alex, your appointment at the Madrid land registry office (Calle de
+      Alcalá 100, window 4) is confirmed for Thursday 12 November 2026 at 10:00,
+      file ref. 28082A01400039. Please bring: national ID (DNI), the escritura
+      (property deed), and dated photos of the facade. Arrive 15 minutes early.
+      Reschedule or cancel at sedecatastro.gob.es/cita with your reference.
+expect:
+  task: {kind: commitment, due: true}
+  steps:
+    include:
+    - {when: true}
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    count: {max: 1}

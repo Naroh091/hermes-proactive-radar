@@ -1,0 +1,48 @@
+# Morning-brief content in one snapshot: two overlapping calendar events, a client
+# thread awaiting an answer, and a flight the day after tomorrow. This is the raw
+# material the optional fixed-slot brief (brief: {enabled: true, time}) summarizes
+# in one message; with the brief off, each item follows the normal paced reminder.
+now: 2026-11-09T07:00:00Z
+signals:
+  - kind: calendar
+    title: "Dentist appointment"
+    organizer: "clinicadental@example.org"
+    start: 2026-11-09T10:00:00+01:00
+    end: 2026-11-09T11:00:00+01:00
+    location: "Calle Mayor 10, Madrid"
+    my_response: accepted
+    change: created
+  - kind: calendar
+    title: "Sprint review with Acme"
+    organizer: "pm@acme.example.example"
+    start: 2026-11-09T10:30:00+01:00
+    end: 2026-11-09T11:30:00+01:00
+    attendees: ["pm@acme.example.example"]
+    my_response: accepted
+    change: created
+  - kind: email
+    account: me@example.org
+    from: "Acme Corp <pm@acme.example.example>"
+    subject: "Can you confirm the Q4 numbers before Thursday?"
+    body: |
+      Hello Alex, could you please confirm the Q4 figures for the report before
+      Thursday 12 November? The board deck closes that morning and your numbers
+      are the only ones missing. Thank you!
+  - kind: email
+    account: me@example.org
+    from: "Iberia <noreply@iberia.example>"
+    subject: "Purchase confirmation - Booking reference M4RT1N"
+    body: |
+      Hello Alex, thank you for flying with Iberia.
+
+      Booking reference: M4RT1N
+      Flight IB3024  Madrid (MAD) 11 Nov 2026 07:30  →  London (LHR) 08:45
+      Passenger: Alex Rivera Soto
+      Basic fare. Total: 74.00 EUR paid with Visa ending 0042.
+expect:
+  steps:
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    count: {max: 2}
+    no_kind: notice

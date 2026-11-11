@@ -1,0 +1,22 @@
+# A failed subscription charge: money at risk, high importance, a decision the owner must take now.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Brave Software, Inc. <no-reply@stripe.example>"
+    subject: "$8.82 payment to Brave Software, Inc. was unsuccessful"
+    body: |
+      We were unable to charge your Visa ending in 0042 for your Brave Software, Inc. subscription.
+      Please update your billing information to continue your subscription:
+      https://billing.stripe.com/p/session/test_123
+
+      If the payment keeps failing, the subscription will be interrupted on 10 November.
+expect:
+  task:
+    status: [needs_user, open]
+  steps:
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    kind: notice
+    any: [Brave, tarjeta, Visa]

@@ -1,0 +1,51 @@
+# A disrupted flight with compensation rights: 6-hour delay, claim filed, airline
+# approval with payout weeks later. Radar should treat the claim as an awaits with
+# a long fallback (the carrier's resolution mail is the trigger, weeks out is the
+# fallback), keep the task open and quiet meanwhile, and tell the payout as news.
+phases:
+  - at: 2026-11-07T11:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Delta Air Lines <noreply@delta.example>"
+        subject: "Your flight DL245 AMS-JFK on 7 Nov is delayed 6 hours"
+        body: |
+          Hello Alex, we are sorry: flight DL245 Amsterdam (AMS) → New York (JFK)
+          on 7 November 2026, booked under reference H8KJ2P, is delayed by 6 hours.
+          New departure: 21:40 (was 15:40). We will keep you informed by email.
+          If you arrived more than 3 hours late on an EU departure, you may be
+          entitled to compensation under EU Regulation 261/2004: claim at
+          delta.com/eu261claim with your reference H8KJ2P.
+  - at: 2026-11-08T11:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Delta Air Lines <customerservice@delta.example>"
+        subject: "We received your EU261 claim H8KJ2P"
+        body: |
+          Hello Alex, we confirm receipt of your EU261 compensation claim for
+          flight DL245 on 7 November (reference H8KJ2P). Most cases receive a
+          response within 21 days. We will email you once it is resolved.
+    expect:
+      messages: {no_kind: notice}
+  - at: 2026-11-29T10:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Delta Air Lines <customerservice@delta.example>"
+        subject: "Your EU261 claim H8KJ2P is approved: 600 EUR on its way"
+        body: |
+          Hello Alex, your EU261 claim for flight DL245 on 7 November (H8KJ2P)
+          is approved. A payment of 600.00 EUR will reach your Visa ending 0042
+          within 7 business days. Thank you for your patience.
+    expect:
+      messages:
+        count: {min: 1}
+        any: ['600']
+expect:
+  task:
+    kind: trip
+    status: [open, waiting]
+  steps:
+    exclude:
+    - {class: external, batch: auto}

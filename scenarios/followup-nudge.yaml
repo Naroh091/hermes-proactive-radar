@@ -1,0 +1,31 @@
+# The owner sent a proposal and a week later nobody answered: the classic
+# sent-but-unanswered follow-up. Radar should keep the task waiting (not nag),
+# then surface one nudge when the silence outlasts the review: what was sent,
+# to whom, and whether to chase, drop, or call instead.
+phases:
+  - at: 2026-10-30T10:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Alex Rivera <me@example.org>"
+        to: "Laura Keller <laura.keller@helvetia.example>"
+        subject: "Proposal: Q1 audit for Helvetia Seguros"
+        body: |
+          Hello Laura, attached is our Q1 audit proposal for Helvetia Seguros
+          (48,000 EUR, start January). Could you please confirm by Thursday
+          5 November so we can sign still in November? Best, Alex.
+    expect:
+      messages: {count: 0}
+      task:
+        status: [waiting, open]
+  - at: 2026-11-06T10:00:00Z
+    signals: []
+    expect:
+      messages:
+        count: {min: 1, max: 1}
+expect:
+  task:
+    status: [waiting, open, needs_user]
+  steps:
+    exclude:
+    - {class: external, batch: auto}

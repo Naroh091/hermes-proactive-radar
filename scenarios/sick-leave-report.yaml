@@ -1,0 +1,22 @@
+# Sick leave with a hard deadline: the mutual writes, the company needs the report
+# in 3 days. Radar should compute due_at from the business-day plazo, propose the
+# read that settles channel + papers first, then the local step that prepares the
+# delivery — and never invent the plazo.
+now: 2026-11-07T11:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Mutua Universal <notificaciones@mutuauniversal.example>"
+    subject: "Sick leave report: deliver to your company within 3 days (ref. MU-2026-88412)"
+    body: |
+      Hello Alex, your sick leave report ref. MU-2026-88412 dated 7 November 2026
+      is available at the electronic office (sede.mutuauniversal.es) with your
+      digital certificate. Please deliver a copy to your company within 3 business
+      days. No reply to this message is needed; download it from the office.
+expect:
+  task: {kind: commitment, due: true}
+  steps:
+    include:
+    - {class: read}
+    exclude:
+    - {class: external, batch: auto}

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-plugin-radar"
+version = "0.3.1"
+description = "Radar: tasks, checks and proposals that anticipate the owner (Hermes Agent plugin)"
+requires-python = ">=3.11"
+license = "MIT"
+
+[project.optional-dependencies]
+receiver = ["aiohttp>=3.9", "cryptography>=41"]
+test = ["pytest>=8"]
+
+[project.entry-points."hermes_agent.plugins"]
+radar = "radar"
+
+[tool.setuptools.package-data]
+radar = ["migrations/*.sql", "schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["radar", "radar.*"]

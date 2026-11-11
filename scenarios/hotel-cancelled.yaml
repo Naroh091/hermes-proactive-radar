@@ -1,0 +1,47 @@
+# The hotel cancels a booking starting in two days: overbooking due to works. There
+# is an open task (the booking) contradicted 48 h before check-in. Radar should
+# treat it as urgency now / importance high, look for similar alternatives
+# (same area, similar price, same nights) with a read step and propose booking
+# the closest match as an external step with consent, never book on its own.
+phases:
+  - at: 2026-11-07T11:00:00Z
+    facts:
+      - key: madrid_trip_reason
+        value: Travelling to Madrid for work from 9 to 11 November 2026, needs to sleep in the centre (Gran Via / Chueca).
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Hotel Vincci Capitol <reservas@vinccihoteles.example>"
+        subject: "Confirmation: Hotel Vincci Capitol, Madrid 9-11 Nov - Reference VC-882341"
+        body: |
+          Hello Alex, your booking is confirmed.
+
+          Hotel Vincci Capitol, Gran Via 41, Madrid (City Centre)
+          Check-in: Monday 9 November 2026 (from 15:00)
+          Check-out: Wednesday 11 November 2026 (until 12:00)
+          1 double room for single use, 2 nights. Breakfast included.
+          Booking reference: VC-882341
+          Total price: 196.00 EUR (pay at the hotel). Free cancellation until 8 November at 23:59.
+  - at: 2026-11-07T18:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Hotel Vincci Capitol <reservas@vinccihoteles.example>"
+        subject: "Cancellation of your booking VC-882341 - Hotel Vincci Capitol 9-11 Nov"
+        body: |
+          Hello Alex, we regret to inform you that we have to cancel your booking VC-882341
+          (Hotel Vincci Capitol, Gran Via 41, Madrid, check-in 9 November, check-out 11 November)
+          due to overbooking caused by unforeseen works on the third floor.
+
+          No charge has been made: the booking was pay at the hotel.
+          You can reach us at +34 91 441 45 47 or reservas@vinccihoteles.example.
+          We apologise for the inconvenience.
+expect:
+  task: {kind: trip}
+  steps:
+    include:
+    - class: read
+      title_any: [alojamiento, alternativ, hotel]
+    exclude:
+    - {class: external, batch: auto}
+    - {operation: booking.reserve, batch: auto}

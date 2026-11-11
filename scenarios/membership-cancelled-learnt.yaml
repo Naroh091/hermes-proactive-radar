@@ -1,0 +1,25 @@
+# The same cancellation once the owner has engaged with that sender before: the learnt "prefer" rule makes it
+# matter (never silent, importance high), so the news reaches them instead of staying on the task.
+now: 2026-11-05T11:00:00Z
+preferences:
+  - effect: prefer
+    scope: {sender: "no-reply@buymeacoffee.example", source_kind: gmail}
+    instruction: "The owner engaged with what comes from no-reply@buymeacoffee.example: it matters."
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Buy Me a Coffee <no-reply@buymeacoffee.example>"
+    subject: "Martin Holt cancelled their membership"
+    body: |
+      Hi Alex,
+
+      Martin Holt has cancelled their Contributor membership (6 € / month, member since 5 January).
+      Reason given: "the price no longer fits my budget".
+
+      You can see your supporters at https://buymeacoffee.com/dashboard/supporters
+replies:
+  - text: "vaya. no le escribas, pero gracias por avisar"
+expect:
+  messages:
+    count: {min: 1}
+    any: [Peter]

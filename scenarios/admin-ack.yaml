@@ -1,0 +1,29 @@
+# A public administration asks the owner to acknowledge receipt by replying to the same message: a draft with the
+# basis "requested_ack" is allowed, and the deadline presses.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Unidad de Transparencia <transparencia@salud.example>"
+    subject: "PID@: Acuerdo de ampliación de plazo (EXP-2026/00000002-PID@)"
+    body: |
+      Estimado Sr.:
+
+      En relación con su solicitud de información pública SOL-2026/00000001-PID@, le trasladamos el
+      Acuerdo de ampliación del plazo máximo de resolución que se adjunta (20 días hábiles).
+
+      Le rogamos conteste a este correo acusando recibo del mismo en el plazo de diez días.
+
+      SERVICIO REGIONAL DE SALUD
+      Unidad de Transparencia
+    attachments: ["acuerdo_ampliacion.pdf"]
+expect:
+  task: {kind: commitment, due: true}
+  steps:
+    include:
+    - {operation: gmail.reply, class: external}
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    count: {min: 1}
+    any: [acuse]

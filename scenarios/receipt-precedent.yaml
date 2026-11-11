@@ -1,0 +1,73 @@
+# A vendor's monthly receipt lands in one of the owner's mailboxes. Nothing in this file says what to do
+# with it: the owner has had their agent handle this vendor's earlier invoices in a particular way, and
+# that is only in the chat history. Radar should find that precedent (the owner's own turns about the
+# sender and the exchange around them), offer the same handling as the default and ask, naming the
+# mailbox that received the receipt, instead of filing it as a done purchase. The owner's answer draws
+# the line per mailbox; a month later the receipt in the other mailbox should get the step itself,
+# without a question, and the one in this mailbox should stay quiet.
+phases:
+  - at: "2026-11-09T01:05:00Z"
+    signals:
+      - kind: email
+        account: me@work.example
+        from: "OpenCode <receipts@anoma.example>"
+        subject: "Tu recibo de OpenCode [n.º 1461-0092]"
+        date: "2026-11-09T01:01:00Z"
+        body: |
+          Recibo de OpenCode
+          Recibo n.º 1461-0092
+          Importe pagado 10,00 US$
+          Fecha de pago 8 de noviembre de 2026, 19:59:54 GMT-5
+          Resumen
+          - Pago a OpenCode: 10,00 US$
+          - Importe pagado: 10,00 US$
+          Si tienes alguna pregunta, escríbenos a help@anoma.example o llámanos al +1 415-712-4747.
+          Puedes verlo en tu navegador: https://dashboard.stripe.com/receipts/payment/sim
+    replies:
+      - text: "las de me@example.org sí, las otras no"
+    expect:
+      steps:
+        include:
+        - operation: ask
+          title_any: [FacturaScripts]
+      messages:
+        any: [FacturaScripts]
+  - at: "2026-12-09T01:05:00Z"
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "OpenCode <receipts@anoma.example>"
+        subject: "Tu recibo de OpenCode [n.º 1502-7718]"
+        date: "2026-12-09T01:01:00Z"
+        body: |
+          Recibo de OpenCode
+          Recibo n.º 1502-7718
+          Importe pagado 10,00 US$
+          Fecha de pago 8 de diciembre de 2026, 19:59:51 GMT-5
+          Resumen
+          - Pago a OpenCode: 10,00 US$
+          - Importe pagado: 10,00 US$
+          Si tienes alguna pregunta, escríbenos a help@anoma.example o llámanos al +1 415-712-4747.
+      - kind: email
+        account: me@work.example
+        from: "OpenCode <receipts@anoma.example>"
+        subject: "Tu recibo de OpenCode [n.º 1502-7720]"
+        date: "2026-12-09T01:02:00Z"
+        body: |
+          Recibo de OpenCode
+          Recibo n.º 1502-7720
+          Importe pagado 10,00 US$
+          Fecha de pago 8 de diciembre de 2026, 20:01:12 GMT-5
+          Resumen
+          - Pago a OpenCode: 10,00 US$
+          - Importe pagado: 10,00 US$
+          Si tienes alguna pregunta, escríbenos a help@anoma.example o llámanos al +1 415-712-4747.
+    expect:
+      steps:
+        include:
+        - {class: local, batch: auto}
+expect:
+  task: {kind: purchase}
+  steps:
+    exclude:
+    - {class: external, batch: auto}

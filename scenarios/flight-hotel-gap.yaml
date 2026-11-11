@@ -1,0 +1,37 @@
+# Flights Monday to Friday, hotel Monday to Thursday: the night of the 26th has no bed.
+phases:
+  - at: 2026-11-07T11:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Vueling <noreply@vueling.example>"
+        subject: "Confirmación de reserva K7M2QD - Madrid-Lisboa 23 nov / Lisboa-Madrid 27 nov"
+        body: |
+          Hola Alex, tu reserva K7M2QD está confirmada.
+
+          Ida: VY8460 Madrid (MAD) lunes 23 nov 2026 07:45 → Lisboa (LIS) 08:05
+          Vuelta: VY8461 Lisboa (LIS) viernes 27 nov 2026 19:30 → Madrid (MAD) 21:50
+          Pasajero: Alex Rivera Soto. Tarifa Basic, equipaje de mano.
+          Total: 132,40 € pagados con Visa terminada en 0042.
+  - at: 2026-11-07T12:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Booking.com <noreply@booking.example>"
+        subject: "Confirmación: Hotel Lisboa Baixa, 23-26 nov"
+        body: |
+          Tu reserva está confirmada.
+
+          Hotel Lisboa Baixa, Lisboa (Portugal)
+          Entrada: lunes 23 de noviembre de 2026 (a partir de las 14:00)
+          Salida: jueves 26 de noviembre de 2026 (hasta las 12:00)
+          1 habitación individual, 1 adulto. 3 noches.
+          Número de confirmación: 5530.228.914  Código PIN: 7702
+          Precio total: 297,00 € (pago en el hotel). Cancelación gratuita hasta el 20 de noviembre a las 23:59.
+expect:
+  task: {kind: trip}
+  steps:
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    any: [26 al 27, noche del 26, el 26]

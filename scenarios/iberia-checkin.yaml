@@ -1,0 +1,39 @@
+# Two moments a week apart: the owner buys an Iberia ticket for 14 November; on the 13th Iberia mails that the
+# check-in is open. Between the two the gateway reviews, expires and fires the timed steps on its own.
+phases:
+  - at: 2026-11-07T10:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Iberia <noreply@iberia.example>"
+        subject: "Confirmación de compra - Localizador ABC123"
+        body: |
+          Hola Alex, gracias por volar con Iberia.
+
+          Localizador: ABC123
+          Vuelo IB3012  Madrid (MAD) 14 nov 2026 08:30  →  Barcelona (BCN) 09:50
+          Pasajero: Alex Rivera Soto
+          Tarifa Básica, sin equipaje facturado. Total: 89,00 € pagados con Visa terminada en 0042.
+
+          El check-in online abre 24 horas antes de la salida en iberia.com o en la app.
+    expect:
+      steps:
+        exclude:
+        - {operation: web.act}
+  - at: 2026-11-13T08:35:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Iberia <noreply@iberia.example>"
+        subject: "Ya puedes hacer el check-in de tu vuelo IB3012 Madrid - Barcelona"
+        body: |
+          Tu vuelo IB3012 del 14 de noviembre sale a las 08:30 desde Madrid T4 (llegada a Barcelona a las 09:50).
+          El check-in online ya está abierto: https://www.iberia.com/checkin?loc=ABC123
+          Recuerda llevar tu documento de identidad y presentarte en la puerta de embarque 30 minutos antes.
+expect:
+  task: {kind: trip}
+  steps:
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    any: [check-in]

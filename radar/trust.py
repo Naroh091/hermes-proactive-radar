@@ -1,0 +1,149 @@
+"""Trust levels: which action classes may run without asking.
+
+Classes come from :mod:`radar.reversibility`: ``read`` (look, analyse), ``local`` (reversible
+and private: branch, draft PR, file, cron, draft reply) and ``external`` (irreversible or visible
+to third parties: send, book, pay, deploy, merge, publish).
+"""
+from __future__ import annotations
+
+from typing import Any
+
+LEVELS = ("cautious", "balanced", "autonomous")
+_AUTO_BY_LEVEL = {
+    "cautious": frozenset({"read"}),
+    "balanced": frozenset({"read", "local"}),
+    "autonomous": frozenset({"read", "local"}),
+}
+NEVER_AUTO = frozenset({"payments.charge", "booking.reserve", "deploy.run", "github.merge_pr"})
+ASK_FIRST = frozenset({"cron.create", "task.update"})  # reversible, but automations and closing the owner's tasks are always their call
+# Mail that leaves the mailbox or stages a message to send is always the owner's decision, whatever the trust
+# level and whatever is listed in trust.auto_external: a message to a third party, or a draft of one sitting in
+# the mailbox, is never the assistant's own work and never runs by itself.
+EMAIL_SEND = frozenset({"gmail.send_email", "gmail.reply", "gmail.reply_all", "gmail.send_reply", "gmail.create_draft"})
+
+
+def decision_like(proposal: dict[str, Any]) -> bool:
+    """A stored proposal that waits for the owner's word: a question, a check, an irreversible step, or news that
+    carries a question. The assistant's own work and plain news are not decisions."""
+    operation = str(proposal.get("operation_id") or "")
+    params = proposal.get("params") or {}
+    return operation in ("ask", "check") or proposal.get("action_class") == "external" or (operation == "inform" and bool(params.get("ask")))
+
+
+def needs_consent(config: dict[str, Any], task: dict[str, Any] | None, proposal: dict[str, Any]) -> bool:
+    """True when a step is the owner's decision (a question, a consistency check, an irreversible action, work the
+    trust level reserves for them); False when it is the assistant's own work, which runs by itself and is never
+    offered as a button. Accepts a planned item (``operation``, ``ask``) or a stored proposal (``operation_id``, ``params``)."""
+    operation = str(proposal.get("operation_id") or proposal.get("operation") or "")
+    action_class = str(proposal.get("action_class") or "read")
+    params = proposal.get("params") if isinstance(proposal.get("params"), dict) else {}
+    if operation in ("ask", "check"):
+        return True
+    if operation == "inform":
+        return bool(params.get("ask") or proposal.get("ask"))
+    if operation in EMAIL_SEND:
+        return True  # email to a third party, or a draft of one, is always the owner's call
+    kind = (task or {}).get("kind")
+    trust = config.get("trust") or {}
+    if action_class == "external":
+        return not may_auto_run(trust, "external", kind=kind, operation_id=operation or None)
+    entities = (task or {}).get("entities") if isinstance((task or {}).get("entities"), dict) else {}
+    if entities.get("session_id") and not (config.get("observation") or {}).get("session_auto_jobs", False):
+        return True  # work that began in a chat stays with the chat: Radar offers, the owner decides
+    return not may_auto_run(trust, action_class, kind=kind, operation_id=operation or None)
+
+
+def describe(level: str) -> dict[str, Any]:
+    classes = sorted(_AUTO_BY_LEVEL.get(level, _AUTO_BY_LEVEL["balanced"]))
+    return {"level": level, "auto_classes": classes, "asks_for": "external"}
+
+
+def may_auto_run(trust: dict[str, Any], action_class: str, *, kind: str | None = None, operation_id: str | None = None) -> bool:
+    """True when ``action_class`` may run unattended under the configured trust."""
+    level = str(trust.get("level") or "balanced")
+    auto = set(_AUTO_BY_LEVEL.get(level, _AUTO_BY_LEVEL["balanced"]))
+    overrides = trust.get("overrides") or {}
+    if kind and isinstance(overrides.get(kind), dict):
+        rule = overrides[kind].get(action_class)
+        if rule == "auto":
+            auto.add(action_class)
+        elif rule == "ask":
+            auto.discard(action_class)
+    if operation_id and operation_id in ASK_FIRST:
+        return False
+    if operation_id and operation_id in EMAIL_SEND:
+        return False  # email never runs unattended, whatever trust.auto_external lists
+    if action_class == "external":
+        if operation_id and operation_id in NEVER_AUTO:
+            return False
+        allowed = trust.get("auto_external") or []
+        return level == "autonomous" and bool(operation_id) and operation_id in allowed
+    return action_class in auto
+
+
+GUIDE: dict[str, dict[str, Any]] = {
+    "es": {
+        "intro": (
+            "Cada paso que Radar propone tiene una clase según lo que cambia:\n"
+            "  read      consultar, comparar, analizar, reproducir un bug. No cambia nada.\n"
+            "  local     cambios reversibles y privados: borrador de respuesta, rama, PR en borrador, informe, recordatorio.\n"
+            "  external  irreversible o visible para terceros: enviar un email, reservar, pagar, desplegar, mergear, publicar.\n"
+            "El nivel de confianza decide qué clases corren solas y cuáles te preguntan antes."
+        ),
+        "levels": {
+            "cautious": "cautious — Solo mira. Corre solo lo de clase read; cualquier cambio, aunque sea un borrador, te pregunta antes.",
+            "balanced": "balanced — Mira y prepara. Corre solo read y local; todo lo externo te pregunta siempre. (Recomendado.)",
+            "autonomous": "autonomous — Mira, prepara y actúa. Como balanced, y además ejecuta sin preguntar las operaciones externas que listes en trust.auto_external. Enviar correo y dejar borradores te pregunta SIEMPRE, sea cual sea el nivel; pagar, reservar, desplegar y mergear nunca corren solos.",
+        },
+        "examples": (
+            "Ejemplo 1 — llega un email de un cliente con un bug de login en tu repo:\n"
+            "  cautious   te avisa con lo que se ve en el email y pregunta «¿Investigo?». Solo tras tu sí reproduce el bug.\n"
+            "  balanced   reproduce el bug, crea una rama y un PR en borrador, y te avisa con el resumen y el PR. Responder al cliente te lo pregunta siempre.\n"
+            "  autonomous igual que balanced, y además corre sin preguntar las externas que listes en auto_external. Enviar el correo al cliente te lo sigue preguntando: el correo nunca se automatiza. Mergear o desplegar también piden confirmación.\n"
+            "Ejemplo 2 — llega la confirmación de un vuelo y no hay hotel para esas noches:\n"
+            "  cautious   avisa «falta alojamiento» y pregunta «¿busco opciones?».\n"
+            "  balanced   busca opciones solo y te manda tres candidatos con precio. Reservar te lo pregunta.\n"
+            "  autonomous igual que balanced: reservar y pagar nunca se automatizan."
+        ),
+        "overrides": "Afinar por tipo de tarea: trust.overrides: {work_item: {local: auto}} o {trip: {local: ask}}.",
+    },
+    "en": {
+        "intro": (
+            "Every step Radar proposes has a class, by what it changes:\n"
+            "  read      look up, compare, analyse, reproduce a bug. Changes nothing.\n"
+            "  local     reversible and private changes: a draft reply, a branch, a draft PR, a report, a reminder.\n"
+            "  external  irreversible or visible to third parties: send an email, book, pay, deploy, merge, publish.\n"
+            "The trust level decides which classes run on their own and which ask you first."
+        ),
+        "levels": {
+            "cautious": "cautious — Looks only. Runs read steps alone; any change, even a draft, asks first.",
+            "balanced": "balanced — Looks and prepares. Runs read and local alone; everything external always asks. (Recommended.)",
+            "autonomous": "autonomous — Looks, prepares and acts. Like balanced, plus the external operations you list in trust.auto_external run without asking. Sending email and staging drafts ALWAYS asks, at every level; paying, booking, deploying and merging never run alone.",
+        },
+        "examples": (
+            "Example 1 — a customer emails a login bug in your repo:\n"
+            "  cautious   notifies you with what the email shows and asks “Shall I investigate?”. Only after your yes does it reproduce the bug.\n"
+            "  balanced   reproduces the bug, creates a branch and a draft PR, and notifies you with the summary and the PR. Replying to the customer always asks you.\n"
+            "  autonomous same as balanced, plus the externals you list in auto_external run without asking. Sending the reply to the customer still asks: email is never automated. Merging or deploying also ask.\n"
+            "Example 2 — a flight confirmation arrives and there is no hotel for those nights:\n"
+            "  cautious   says “lodging missing” and asks “shall I look for options?”.\n"
+            "  balanced   searches on its own and sends you three candidates with prices. Booking asks you.\n"
+            "  autonomous same as balanced: booking and paying are never automated."
+        ),
+        "overrides": "Tune per task kind: trust.overrides: {work_item: {local: auto}} or {trip: {local: ask}}.",
+    },
+}
+
+
+def _guide(language: str | None) -> dict[str, Any]:
+    code = str(language or "es").lower().split("-")[0]
+    return GUIDE.get(code, GUIDE["en"])
+
+
+def level_summary(level: str, language: str | None = "es") -> str:
+    return _guide(language)["levels"].get(level, _guide(language)["levels"]["balanced"])
+
+
+def guide_text(language: str | None = "es") -> str:
+    guide = _guide(language)
+    return "\n".join([guide["intro"], "", *guide["levels"].values(), "", guide["examples"], "", guide["overrides"]])

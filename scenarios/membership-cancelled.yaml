@@ -1,0 +1,22 @@
+# A supporter cancels a small recurring membership. Rated "low importance" by the planner on 2026-11-05, yet the
+# owner cared: after their reply, the sender is learnt as one that matters (prefer rule).
+now: 2026-11-05T11:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Buy Me a Coffee <no-reply@buymeacoffee.example>"
+    subject: "Martin Holt cancelled their membership"
+    body: |
+      Hi Alex,
+
+      Martin Holt has cancelled their Contributor membership (6 € / month, member since 5 January).
+      Reason given: "the price no longer fits my budget".
+
+      You can see your supporters at https://buymeacoffee.com/dashboard/supporters
+replies:
+  - text: "no, déjalo, pero esto sí me interesa saberlo"
+expect:
+  messages: {count: 0}
+  steps:
+    exclude:
+    - {class: external, batch: auto}

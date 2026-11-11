@@ -1,0 +1,29 @@
+# Long-haul to a destination with entry papers: the confirmation itself points at
+# the e-VOA. Radar should derive the documents implication (not a generic note),
+# settle it with a read step on the official requirements (fee, lead time, link),
+# and leave a timed step before departure — never ask the owner what the web says.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "Qatar Airways <noreply@qatarairways.example>"
+    subject: "Purchase confirmation - Booking reference B4L1V5A"
+    body: |
+      Hello Alex, thank you for flying with Qatar Airways.
+
+      Booking reference: B4L1V5A
+      Flight QR148  Madrid (MAD) 9 Jan 2027 08:10  →  Doha (DOH) 16:40,
+      connecting QR964  Doha 19:05  →  Denpasar (DPS) 10 Jan 08:30
+      Passenger: Alex Rivera Soto. Total: 640.00 EUR paid with Visa ending 0042.
+      Spanish citizens need an e-Visa on Arrival for Bali: apply before departure
+      at molina.imigrasi.go.id (approx. 35 USD, passport valid 6+ months).
+expect:
+  task: {kind: trip}
+  steps:
+    include:
+    - operation: web.read
+      title_any: [visa, voa, visado]
+    exclude:
+    - {class: external, batch: auto}
+    - operation: ask
+      title_any: [visa, voa, visado]

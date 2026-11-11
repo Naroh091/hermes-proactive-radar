@@ -1,0 +1,41 @@
+# The same trip with a flight at 11:00: the check-in opens at 11:00 the day before, and the airline's mail comes at
+# 11:05. A step timed by guesswork for the morning would have been offered before the check-in was open.
+phases:
+  - at: 2026-11-07T10:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Iberia <noreply@iberia.example>"
+        subject: "Confirmación de compra - Localizador QX7P2L"
+        body: |
+          Hola Alex, gracias por volar con Iberia.
+
+          Localizador: QX7P2L
+          Vuelo IB3016  Madrid (MAD) 14 nov 2026 11:00  →  Barcelona (BCN) 12:20
+          Pasajero: Alex Rivera Soto
+          Tarifa Básica, sin equipaje facturado. Total: 94,00 € pagados con Visa terminada en 0042.
+
+          El check-in online abre 24 horas antes de la salida en iberia.com o en la app.
+    expect:
+      steps:
+        exclude:
+        - {operation: web.act}
+  - at: 2026-11-13T10:05:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Iberia <noreply@iberia.example>"
+        subject: "Ya puedes hacer el check-in de tu vuelo IB3016 Madrid - Barcelona"
+        body: |
+          Tu vuelo IB3016 del 14 de noviembre sale a las 11:00 desde Madrid T4 (llegada a Barcelona a las 12:20).
+          El check-in online ya está abierto: https://www.iberia.com/checkin?loc=QX7P2L
+          Recuerda llevar tu documento de identidad y presentarte en la puerta de embarque 30 minutos antes.
+expect:
+  task: {kind: trip}
+  steps:
+    include:
+    - {operation: web.act, class: external}
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    any: [check-in]

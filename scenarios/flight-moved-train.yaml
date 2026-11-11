@@ -1,0 +1,63 @@
+# The airline moves the flight two days later and orphans the train already booked
+# for the same day. Radar should correlate both (same trip, dates no longer fit),
+# look up the train change policy with a read step (mailbox/web) and propose moving
+# the train to the new flight day as an external step with consent, plus recall
+# that the flight allows a free change or refund.
+phases:
+  - at: 2026-11-07T11:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Iberia <noreply@iberia.example>"
+        subject: "Purchase confirmation - Booking reference QX7P2L"
+        body: |
+          Hello Alex, thank you for flying with Iberia.
+
+          Booking reference: QX7P2L
+          Flight IB3012  Madrid (MAD) 14 Nov 2026 08:30  →  Barcelona (BCN) 09:50
+          Passenger: Alex Rivera Soto
+          Basic fare, no checked baggage. Total: 89.00 EUR paid with Visa ending 0042.
+
+          Manage your booking at iberia.com/manage: free changes in case of an operational disruption, or a refund.
+      - kind: email
+        account: me@example.org
+        from: "OUIGO <noreply@ouigo.example>"
+        subject: "Confirmation of your booking H5K2QP - Train tickets Barcelona - Girona 14 Nov"
+        body: |
+          Hello Alex, your train ticket booking is confirmed.
+
+          Booking: H5K2QP
+          OUIGO 06215  Barcelona Sants 14 Nov 2026 12:05  →  Girona 12:43
+          Traveller: Alex Rivera Soto. Essential fare (1 adult): 19.00 EUR paid.
+          Changes allowed until 2 h before departure with a 10.00 EUR fee plus any fare difference.
+          Ticket manageable at ouigo.com or in the app with reference H5K2QP.
+  - at: 2026-11-07T12:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Iberia <noreply@iberia.example>"
+        subject: "Change to your flight IB3012 Madrid - Barcelona: new date 16 Nov"
+        body: |
+          Hello Alex, your flight IB3012 Madrid (MAD) → Barcelona (BCN) on 14 November
+          has been changed for operational reasons.
+
+          Booking reference: QX7P2L
+          New flight: IB3012  Madrid (MAD) 16 Nov 2026 08:30  →  Barcelona (BCN) 09:50
+          Passenger: Alex Rivera Soto
+
+          You can accept the new schedule, pick another flight at no extra cost or request
+          a refund at iberia.com/manage with your reference QX7P2L.
+    expect:
+      messages:
+        count: {min: 1}
+        any: [tren]
+expect:
+  task:
+    kind: trip
+    title_any: [16 nov, movido, 16 de nov]
+  steps:
+    include:
+    - class: read
+      title_any: [tren, H5K2QP, cambio, condiciones]
+    exclude:
+    - {class: external, batch: auto}

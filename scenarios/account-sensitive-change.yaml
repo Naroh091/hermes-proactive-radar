@@ -1,0 +1,22 @@
+# A service reports that the second factor of an account was switched off. That is worse than a login: the owner is
+# told what changed, and still not asked whether it was them.
+now: 2026-11-09T10:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "GoDaddy <donotreply@godaddy.example>"
+    subject: "Aviso de seguridad: se ha desactivado la verificación en dos pasos"
+    body: |
+      Se ha desactivado la verificación en dos pasos de tu cuenta de GoDaddy, que gestiona los dominios casaseca.example y devstudio.example.
+expect:
+  triage: kept
+  steps:
+    include:
+      - {operation: inform}
+    exclude:
+      - {operation: [ask, check]}
+      - {class: external, batch: auto}
+  messages:
+    count: {min: 1}
+    any: [verificación en dos pasos, dos pasos, 2FA]
+    none: [¿fuiste tú, has sido tú, ¿lo hiciste tú, ¿fue cosa tuya, ¿lo desactivaste, ¿has desactivado]

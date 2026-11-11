@@ -1,0 +1,19 @@
+# A chat in which the owner and the agent booked a car for a trip. A finished conversation that leaves something
+# ahead is tracked as the trip it is (deferred), with its implications; it must not interrupt the owner.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: chat
+    platform: desktop
+    session_id: sim-chat-booking
+    turns:
+      - user: "Resérvame un coche en Avilés del 12 al 15 de noviembre, lo recojo en la estación de tren."
+        assistant: "Hecho: reserva OK Mobility 10000001, VW T-Cross automático, recogida en Avilés (estación) el 12 a las 18:00, devolución el 15 a las 17:00, 130 € pagados con la Visa 0042. Te he reenviado la confirmación al correo."
+      - user: "Perfecto, gracias."
+        assistant: "De nada. Si quieres, el día 11 te recuerdo el check-in online."
+expect:
+  triage: kept
+  task: {kind: trip}
+  steps:
+    exclude:
+    - {class: external, batch: auto}
+  messages: {no_kind: notice}

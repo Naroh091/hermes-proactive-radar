@@ -1,0 +1,35 @@
+# A reservation that needs a signup code from the mailbox to be completed. Phase 1:
+# the restaurant asks for the code sent by email; phase 2: the code arrives.
+# Radar should read the code from the same thread (confirmation mail first, never
+# a broad search for an old code) and propose completing the booking with it.
+phases:
+  - at: 2026-11-07T11:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Resy <noreply@resy.example>"
+        subject: "Confirm your 4 Charles Prime Rib reservation: enter code 482913"
+        body: |
+          Hello Alex, to complete your request for 4 Charles Prime Rib, New York,
+          party of 2, Friday 14 November 2026 at 20:00, enter the signup code
+          482913 at resy.com/confirm within 30 minutes. This code expires at
+          11:30 today. Without it the table is released.
+  - at: 2026-11-07T11:10:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Resy <noreply@resy.example>"
+        subject: "Reminder: your table is held for 20 more minutes (code 482913)"
+        body: |
+          Hello Alex, your table for 2 at 4 Charles Prime Rib on 14 November at
+          20:00 is still held for 20 more minutes. Your code is 482913.
+          Note: a no-show carries a 200.00 USD cancellation fee per policy at
+          resy.com/policy. Confirm or release the table before the hold expires.
+expect:
+  task: {kind: commitment}
+  steps:
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    count: {min: 1}
+    any: ['482913', código]

@@ -1,0 +1,14 @@
+{
+  "name": "radar",
+  "label": "Radar",
+  "description": "Radar: tasks the plugin anticipates (trips, purchases, work items, commitments), their proposals, drafts, patterns and preferences",
+  "icon": "Activity",
+  "version": "0.4.1",
+  "api": "plugin_api.py",
+  "entry": "dist/index.js",
+  "tab": {
+    "path": "/radar",
+    "position": "end",
+    "hidden": false
+  }
+}

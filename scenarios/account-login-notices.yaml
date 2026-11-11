@@ -1,0 +1,26 @@
+# Mail about getting into an account: a login code, a password reset, a login from a new device. The owner does not
+# want «was it you?» about any of these, and triage settles them with no model.
+now: 2026-11-09T01:30:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "GoDaddy <donotreply@godaddy.example>"
+    subject: "Aviso de seguridad: Tu código de un solo uso para iniciar sesión es 803373."
+    body: |
+      Alguien ha iniciado sesión en tu cuenta desde una nueva ubicación o un nuevo dispositivo. Para verificar que has sido tú, inicia sesión con este código.
+  - kind: email
+    account: me@example.org
+    from: "GoDaddy <donotreply@godaddy.example>"
+    subject: "Aviso de seguridad: El restablecimiento de la contraseña se ha realizado correctamente."
+    body: |
+      Tu contraseña provisional caducará dentro de 21 días.
+  - kind: email
+    account: me@example.org
+    from: "Instagram <no-reply@mail.instagram.example>"
+    subject: "New login to Instagram from Chrome on Mac OS X"
+    body: |
+      We noticed a login from a new device.
+expect:
+  triage: ignored
+  task: none
+  messages: {count: 0}

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160" width="400" height="160" role="img" aria-labelledby="t">
+  <title id="t">Hermes Radar</title>
+  <defs>
+    <linearGradient id="sweep" x1="80" y1="80" x2="134" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0C9A88" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#0C9A88" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- the dish: three quiet rings -->
+  <g fill="none" stroke="#B9C4CC" stroke-width="2">
+    <circle cx="80" cy="80" r="62"/>
+    <circle cx="80" cy="80" r="41"/>
+    <circle cx="80" cy="80" r="20"/>
+  </g>
+  <!-- the sweep: what Radar is looking at right now -->
+  <path d="M80 80 L80 18 A62 62 0 0 1 133.7 49 Z" fill="url(#sweep)"/>
+  <path d="M80 80 L133.7 49" stroke="#0C9A88" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="80" cy="80" r="4.5" fill="#14202B"/>
+  <!-- the one thing that deserves your attention -->
+  <circle cx="109" cy="45" r="7.5" fill="#0C9A88"/>
+  <circle cx="109" cy="45" r="13" fill="none" stroke="#0C9A88" stroke-width="2" stroke-opacity="0.35"/>
+  <!-- everything else stays quiet -->
+  <circle cx="52" cy="104" r="3" fill="#B9C4CC"/>
+  <circle cx="98" cy="118" r="3" fill="#B9C4CC"/>
+  <circle cx="40" cy="62" r="3" fill="#B9C4CC"/>
+  <g font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#14202B">
+    <text x="176" y="62" font-size="19" font-weight="600" letter-spacing="6.5">HERMES</text>
+    <text x="172" y="120" font-size="66" font-weight="700" letter-spacing="-2">Radar</text>
+  </g>
+</svg>

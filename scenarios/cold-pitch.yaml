@@ -1,0 +1,19 @@
+# A cold sales mail asking the owner to confirm a call. A cold sender gets no reply draft and raises no question.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@work.example
+    from: "Growth Team <sales@leadrocket.example>"
+    subject: "Quick call this week? Boost Newsroom's newsletter growth by 40%"
+    body: |
+      Hi Alex,
+
+      I noticed Newsroom runs several newsletters. We help media organisations grow subscribers with
+      our AI-driven growth platform. Could you confirm a 15-minute call on Thursday at 11:00 or Friday
+      at 16:00? Just reply with the slot that works for you.
+
+      Cheers,
+      Mark, Growth Team at LeadRocket
+expect:
+  task: none
+  messages: {count: 0}

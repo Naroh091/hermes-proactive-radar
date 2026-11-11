@@ -1,0 +1,42 @@
+# The owner's own notes say one thing, three bookings say another: honeymoon flights
+# with wrong times in the notes. Radar should cross-check the notes against the
+# evidence (mailbox confirmations), flag each mismatch as a high-severity check,
+# and never ask the owner to re-read what it can read itself.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@example.org
+    from: "TAP Air Portugal <noreply@tap.example>"
+    subject: "Booking confirmation TP1234: Lisbon honeymoon flights"
+    body: |
+      Hello Alex, your honeymoon booking TP1234 is confirmed.
+
+      Outbound: TP1018  Madrid (MAD) 20 Dec 2026 12:15  →  Lisbon (LIS) 12:30
+      Return: TP1019  Lisbon (LIS) 27 Dec 2026 18:05  →  Madrid (MAD) 20:25
+      Passengers: Alex Rivera Soto + 1. Total: 312.00 EUR paid.
+  - kind: email
+    account: me@example.org
+    from: "Hotel Tivoli <reservas@tivolihotels.example>"
+    subject: "Confirmation: Tivoli Avenida Liberdade 20-27 Dec, ref. TV-55120"
+    body: |
+      Hello Alex, your booking TV-55120 is confirmed.
+
+      Hotel Tivoli Avenida Liberdade, Lisbon. Check-in Sunday 20 December 2026
+      from 15:00, check-out Sunday 27 December 2026 until 12:00. 7 nights,
+      breakfast included. Total: 980.00 EUR, free cancellation until 13 December.
+  - kind: chat
+    platform: desktop
+    session_id: sim-honeymoon-notes
+    turns:
+      - user: "My honeymoon: flight out 20 Dec at 09:00, back 27 Dec at 20:00, hotel Tivoli 20-27 Dec. All good, right?"
+        assistant: "Let me check the bookings against your notes and confirm each leg."
+expect:
+  task: {kind: trip}
+  steps:
+    include:
+    - {operation: check}
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    count: {min: 1}
+    any: ['09:00', '12:15', notas]

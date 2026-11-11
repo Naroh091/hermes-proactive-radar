@@ -1,0 +1,41 @@
+# A hotel in Lisbon from the 20th to the 24th, then a parcel due at home on the 22nd: nobody will be there.
+phases:
+  - at: 2026-11-07T11:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Booking.com <noreply@booking.example>"
+        subject: "Confirmación: Hotel Lisboa Baixa, 20-24 nov"
+        body: |
+          Tu reserva está confirmada.
+
+          Hotel Lisboa Baixa, Lisboa (Portugal)
+          Entrada: viernes 20 de noviembre de 2026 (a partir de las 14:00)
+          Salida: martes 24 de noviembre de 2026 (hasta las 12:00)
+          1 habitación doble, 2 adultos. 4 noches.
+          Número de confirmación: 5520.117.402  Código PIN: 3391
+          Precio total: 412,00 € (pago en el hotel). Cancelación gratuita hasta el 17 de noviembre a las 23:59.
+  - at: 2026-11-07T12:00:00Z
+    signals:
+      - kind: email
+        account: me@example.org
+        from: "Amazon.es <envio-actualizacion@amazon.example>"
+        subject: "Enviado: Monitor Dell 27'' U2723QE - llega el domingo 22 de noviembre"
+        body: |
+          Hola Alex, tu pedido 406-7731928-2250731 ha sido enviado.
+
+          Monitor Dell UltraSharp 27'' U2723QE (1 unidad) - 519,00 €
+          Entrega prevista: domingo 22 de noviembre, entre las 10:00 y las 14:00
+          Dirección de entrega: Alex Rivera Soto, Calle Mayor 10, 3ºB, 28005 Madrid
+          Transportista: Amazon Logistics. Se requiere firma a la entrega.
+          Puedes cambiar la fecha o el punto de entrega hasta que el paquete salga a reparto.
+expect:
+  task: {kind: purchase}
+  steps:
+    include:
+    - operation: [check, ask]
+    exclude:
+    - {class: external, batch: auto}
+  messages:
+    count: {min: 1}
+    any: [Lisboa]

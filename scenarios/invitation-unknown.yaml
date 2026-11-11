@@ -1,0 +1,22 @@
+# An invitation to a webinar from an organisation the owner has never corresponded with, to a kind of event
+# they never attend: it should be recorded for the panel and raised nowhere.
+now: 2026-11-08T10:00:00Z
+signals:
+  - kind: email
+    account: me@work.example
+    from: "Nordic Trust Lab <events@nordictrustlab.example>"
+    subject: "Invitation: webinar on synthetic media detection, 20 November"
+    body: |
+      Dear Alex,
+
+      We would be delighted to have you join our online webinar "Detecting synthetic media at scale" on
+      20 November at 15:00 CET. Seats are limited; please confirm your attendance by replying to this
+      email or registering at https://nordictrustlab.org/webinar.
+
+      Best regards,
+      Nordic Trust Lab events team
+expect:
+  messages: {count: 0}
+  steps:
+    exclude:
+    - operation: [ask, check, gmail.*]
