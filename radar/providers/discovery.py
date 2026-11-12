@@ -8,19 +8,39 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import logging
 from typing import Any
 
 from .registry import FINGERPRINTS, classify_tools, kind_of
 
+log = logging.getLogger(__name__)
+
+
+def yaml_loader() -> Any:
+    """``safe_load`` of the host's YAML module (``hermes_yaml``; Hermes does not ship PyYAML), or PyYAML's where that
+    is what the environment has (a development checkout). None when there is neither."""
+    try:
+        from hermes_yaml import safe_load  # type: ignore[import-not-found]  # host module
+
+        return safe_load
+    except ImportError:
+        pass
+    try:
+        import yaml
+
+        return yaml.safe_load
+    except ImportError:
+        return None
+
 
 def _read_yaml(path: Path) -> dict[str, Any]:
-    try:
-        import yaml  # host dependency
-    except ImportError:  # pragma: no cover - the host always ships PyYAML
+    load = yaml_loader()
+    if load is None:
+        log.warning("no YAML loader (hermes_yaml or PyYAML): %s was not read, MCP discovery will find nothing", path)
         return {}
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        data = load(path.read_text(encoding="utf-8"))
+    except Exception:  # unreadable file or invalid YAML, whatever the loader raises
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -84,8 +104,8 @@ def discover(hermes_home: Path) -> list[dict[str, Any]]:
 
 
 def discover_cli(hermes_home: Path, *, which=None) -> list[dict[str, Any]]:
-    """Command-line connectors on this machine: ``gws`` (Google Workspace CLI) with the token the Hermes
-    google-workspace skill keeps, that skill's own ``google_api.py`` wrapper when it is authorised, and ``gog``, whose
+    """Command-line connectors on this machine: ``gws`` (Google Workspace CLI, on its own login or the
+    ``connector.token`` the owner sets), the Hermes google-workspace skill's own ``google_api.py`` wrapper when it is authorised, and ``gog``, whose
     mapping has to be derived first (``hermes radar connector derive gog``). Rows look like MCP rows, with ``cli``
     true, no server and a ``connector`` the source keeps."""
     import shutil
@@ -99,7 +119,7 @@ def discover_cli(hermes_home: Path, *, which=None) -> list[dict[str, Any]]:
     if gws:
         for kind in ("gmail", "calendar"):
             rows.append({"server": "", "package": gws, "enabled": True, "tools": [], "cached": True, "provider": "gws", "kind": kind, "cli": True,
-                         "label": "Google Workspace CLI (gws)", "ready": token.exists(), "connector": {"binary": gws, "token": str(token) if token.exists() else ""}})
+                         "label": "Google Workspace CLI (gws, on its own login or the connector.token you set)", "ready": True, "connector": {"binary": gws}})
     script = hermes_home.joinpath(*SCRIPT_RELATIVE)
     if script.exists() and token.exists():
         for kind in ("gmail", "calendar"):

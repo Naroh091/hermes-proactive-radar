@@ -57,7 +57,9 @@ def test_the_runner_hands_the_child_its_class_and_allow_list():
     runner = JobRunner(spawn=None, max_seconds=10, env={"PATH": "/bin", "HERMES_RADAR_JOB_ALLOW": "stale"})
     local = runner._child_env({"id": "j", "action_class": "local"})
     assert local["HERMES_RADAR_JOB"] == "1" and local["HERMES_RADAR_JOB_CLASS"] == "local" and "HERMES_RADAR_JOB_ALLOW" not in local
-    assert local["HERMES_ACCEPT_HOOKS"] == "1"  # the firewall hook must run in the child
+    assert "HERMES_ACCEPT_HOOKS" not in local  # never Radar's to set: it would approve shell hooks the user did not
+    kept = JobRunner(spawn=None, max_seconds=10, env={"PATH": "/bin", "HERMES_ACCEPT_HOOKS": "1"})._child_env({"id": "j", "action_class": "local"})
+    assert kept["HERMES_ACCEPT_HOOKS"] == "1"  # the user's own setting passes through untouched
     external = runner._child_env({"id": "j", "action_class": "external"}, allow="reply_all, send_email")
     assert external["HERMES_RADAR_JOB_ALLOW"] == "reply_all,send_email"
     assert child_env("read")["HERMES_RADAR_JOB_CLASS"] == "read" and "HERMES_RADAR_JOB_ALLOW" not in child_env("local", "send_email")

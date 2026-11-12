@@ -9,9 +9,10 @@ order, and the main model is benched for a few minutes so the next calls go stra
 auxiliary ladder only fails over on a closed list of reasons (auth, payment, rate limit, timeout, connection) and
 the Anthropic spend limit answers as a plain HTTP 400, which is on no list: on 2026-11-04/05 radar sat without a
 model for thirty hours while the owner's chat and radar's own jobs, which run through the main agent loop, kept
-answering via the fallback. Using the fallback is an override the owner grants once in the host config
-(``plugins.entries.radar.llm.allow_provider_override`` and ``allow_model_override``); without it the main error
-surfaces as before.
+answering via the fallback. Using the fallback is an override the owner grants to the plugin through Hermes: the
+manifest declares the capabilities ``llm.provider_override`` and ``llm.model_override`` and ``hermes plugins
+install`` / ``enable`` asks for them. Radar never writes that grant itself; without it the main error surfaces as
+before.
 """
 from __future__ import annotations
 
@@ -23,11 +24,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
+from .identity import PLUGIN_ID
+
 log = logging.getLogger(__name__)
 
 # After a main-model failure that a fallback rescued, the main model is skipped for this long.
 FALLBACK_BENCH_MINUTES = 10
 OVERRIDE_FLAGS = ("allow_provider_override", "allow_model_override")
+OVERRIDE_CAPABILITIES = ("llm.provider_override", "llm.model_override")  # declared in plugin.yaml, granted through Hermes
+GRANT_COMMAND = f"hermes plugins enable {PLUGIN_ID}"  # asks for the declared capabilities
 
 AUX_PREFIX = "radar_"
 SLOTS: dict[str, tuple[str, str]] = {
@@ -81,7 +86,7 @@ class BudgetExhausted(LlmError):
 
 
 class OverrideDenied(LlmError):
-    """The host refused the provider/model override the fallback needs (``plugins.entries.radar.llm``)."""
+    """The host refused the provider/model override the fallback needs (the ``llm.*_override`` capabilities)."""
 
 
 def host_fallbacks() -> list[dict[str, str]]:
@@ -96,25 +101,19 @@ def host_fallbacks() -> list[dict[str, str]]:
 
 
 def override_granted(host_config: Any) -> bool:
-    """Whether the host config lets radar ask for another provider and model (``plugins.entries.radar.llm``)."""
+    """Whether the owner granted the plugin the two override capabilities. Read-only: the grant is Hermes' to record
+    (``hermes plugins enable``), under ``plugins.entries.<id>``: the granted capability list, or the flags the host
+    mirrors them into."""
     node = host_config if isinstance(host_config, dict) else {}
-    for key in ("plugins", "entries", "radar", "llm"):
+    for key in ("plugins", "entries", PLUGIN_ID):
         node = node.get(key) if isinstance(node, dict) else None
-    return isinstance(node, dict) and all(bool(node.get(flag)) for flag in OVERRIDE_FLAGS)
-
-
-def grant_override(host_config: dict[str, Any], enabled: bool) -> dict[str, Any]:
-    """Set both override flags in the host config dict (in place) and return it."""
-    node = host_config
-    for key in ("plugins", "entries", "radar", "llm"):
-        child = node.get(key)
-        if not isinstance(child, dict):
-            child = {}
-            node[key] = child
-        node = child
-    for flag in OVERRIDE_FLAGS:
-        node[flag] = bool(enabled)
-    return host_config
+    if not isinstance(node, dict):
+        return False
+    granted = node.get("granted_capabilities")
+    if isinstance(granted, list) and all(capability in granted for capability in OVERRIDE_CAPABILITIES):
+        return True
+    flags = node.get("llm")
+    return isinstance(flags, dict) and all(bool(flags.get(flag)) for flag in OVERRIDE_FLAGS)
 
 
 def fallback_entries(raw: Any) -> list[dict[str, str]]:
@@ -244,8 +243,8 @@ class LlmGate:
             except OverrideDenied as exc:
                 # The grant is read by the host on every call, so once the owner adds it the next ask succeeds.
                 self.override_denied_until = now + timedelta(minutes=FALLBACK_BENCH_MINUTES)
-                log.warning("radar cannot use the host fallback %s via %s: %s. Allow it with plugins.entries.radar.llm.%s",
-                            entry["model"], entry["provider"], exc, " and ".join(OVERRIDE_FLAGS))
+                log.warning("radar cannot use the host fallback %s via %s: %s. Grant %s with `%s`",
+                            entry["model"], entry["provider"], exc, " and ".join(OVERRIDE_CAPABILITIES), GRANT_COMMAND)
                 break
             except LlmError as exc:
                 log.debug("fallback %s via %s failed too: %s", entry["model"], entry["provider"], exc)

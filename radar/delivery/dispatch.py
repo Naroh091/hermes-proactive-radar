@@ -521,6 +521,35 @@ def notify_job_result(store: Any, config: dict[str, Any], *, task_id: str, signa
     return bool(created.get("created"))
 
 
+RESEND_EVERY_MINUTES = 30
+
+
+def resend_decision(store: Any, config: dict[str, Any], *, proposal: dict[str, Any], now_dt: datetime) -> bool:
+    """Put a decision in front of the owner again, with its buttons: the chat model was asked to approve a step only
+    they can approve, so the notice comes back to them instead of making them look for it. At most one per step every
+    ``RESEND_EVERY_MINUTES``; outside the daily cap, because they have just asked for it in the chat."""
+    if config.get("mode") != "active" or not config.get("notifications", {}).get("enabled") or not _destination_ok(store):
+        return False
+    task_id = proposal.get("task_id")
+    if not task_id:
+        return False
+    try:
+        task = store.get_task(task_id)
+    except KeyError:
+        return False
+    language = config.get("owner", {}).get("language", "es")
+    payload = build_interrupt(task, [proposal], f"{t(language, 'owner_required_resent')} {proposal.get('title') or ''}".strip(),
+                              language=language, now_dt=now_dt, config=config)
+    payload["urgent"] = True
+    payload["exempt"] = True
+    slot = int(now_dt.timestamp() // (RESEND_EVERY_MINUTES * 60))
+    created = store.enqueue_notification(
+        outbox_id=str(uuid4()), destination_id=DESTINATION_ID, followup_id=None, proposal_id=None,
+        notification_key=f"owner-required:{proposal['id']}:{slot}", payload=payload, now=iso(now_dt), task_id=task["id"], kind="notice",
+    )
+    return bool(created.get("created"))
+
+
 def _last_digest_at(store: Any) -> datetime | None:
     for row in store.list_outbox(limit=50):
         if row.get("kind") == "digest":

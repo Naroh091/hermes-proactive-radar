@@ -1,4 +1,4 @@
-name: radar
+name: hermes-proactive-radar
 version: 0.3.1
 description: Radar anticipates the owner's needs. It turns emails, chat turns and events into long-lived tasks (trips, purchases, work items, commitments), checks them against the owner's facts, delegates bounded read-only work to Hermes sessions, and surfaces concise proposals with buttons on Telegram. External actions always require explicit consent.
 manifest_version: 2
@@ -6,6 +6,11 @@ api_version: 1
 requires_hermes: ">=0.22.0"
 license: MIT
 tags: [radar, followups, tasks, gmail, gateway, safety]
+# Asked for by Hermes at install/enable, never written by the plugin: they let Radar retry its own model calls with
+# the host's fallback_providers when the main model fails.
+capabilities:
+  - llm.provider_override
+  - llm.model_override
 provides_tools:
   - radar_status
   - radar_tasks

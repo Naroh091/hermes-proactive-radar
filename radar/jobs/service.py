@@ -9,7 +9,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from ..models import TASK_TERMINAL
-from ..trust import EMAIL_SEND, may_auto_run
+from ..trust import AGENT_CHANNELS, EMAIL_SEND, may_auto_run, owner_only
 from ..operations import native
 from .firewall import allowed_tools_for
 from .prompts import build_job_prompt
@@ -23,7 +23,7 @@ NATIVE_DESTINATION = "configured:primary"
 # reset at midnight, the owner re-enables jobs): the step waits, it is never handed to the owner as a button.
 DEFER_REASONS = frozenset({"active_job", "cooldown", "budget", "task_cap", "disabled", "consent_unavailable"})
 # Blocks that never clear for this proposal.
-TERMINAL_BLOCKS = frozenset({"check", "no_task", "task_closed", "external_auto", "no_safe_executor"})
+TERMINAL_BLOCKS = frozenset({"check", "no_task", "task_closed", "external_auto", "no_safe_executor", "owner_required"})
 
 
 def iso(value: datetime) -> str:
@@ -70,6 +70,10 @@ def job_block_reason(
         return "disabled"
     if proposal.get("operation_id") in ("check", "inform", "ask"):
         return "check"  # nothing to run: a question to the owner or a piece of news
+    if not auto and owner_only(proposal) and str((proposal.get("response") or {}).get("channel") or "") in AGENT_CHANNELS:
+        # Second lock behind respond_to_proposal: an owner-only step whose approval came from the chat model's tool
+        # never runs, however that approval got recorded.
+        return "owner_required"
     if proposal.get("operation_id") in EMAIL_SEND and not is_native:
         # A message to a third party (or a draft of one) runs ONLY through the deterministic native handler,
         # which performs exactly the approved operation. It never runs as a delegated agent that holds a send

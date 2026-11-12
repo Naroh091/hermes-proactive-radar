@@ -18,7 +18,7 @@ def _client(monkeypatch, store, cfg, tmp_path):
     monkeypatch.setattr(module, "_settings", lambda: cfg)
     monkeypatch.setattr(module, "_open", lambda: (store, cfg))
     app = fastapi.FastAPI()
-    app.include_router(module.router, prefix="/api/plugins/radar")
+    app.include_router(module.router, prefix="/api/plugins/hermes-proactive-radar")
     return TestClient(app), module
 
 
@@ -37,7 +37,7 @@ def test_board_detail_respond_and_preferences_through_the_panel_api(store, tmp_p
                                urgency="normal", expires_at="2026-10-22T10:00:00Z", fingerprint="fp1", now=now)
     store.upsert_pattern(pattern_id="pat1", kind="periodic", fingerprint="fx", evidence={"key": ["session", "owner", "resumen"], "schedule_cron": "0 9 * * 1"}, support=4, confidence=0.7, now=now)
     client, module = _client(monkeypatch, store, cfg, tmp_path)
-    board = client.get("/api/plugins/radar/board").json()
+    board = client.get("/api/plugins/hermes-proactive-radar/board").json()
     assert board["stats"]["tasks_open"] == 1 and board["stats"]["proposals_pending"] == 1 and board["language"] == "es"
     task = board["tasks"][0]
     assert task["id"] == "t1" and task["context"]["sender"] == "Hans" and task["draft"].startswith("Hi Hans") and task["entities"]["repo"] == "newsroom-org/webapp"
@@ -45,33 +45,33 @@ def test_board_detail_respond_and_preferences_through_the_panel_api(store, tmp_p
     assert board["patterns"][0]["id"] == "pat1" and "resumen" in board["patterns"][0]["summary"]
     assert task["card_kind"] == "work_item" and task["artifact"]["layout"] == "ticket" and task["artifact"]["repo"] == "newsroom-org/webapp" and task["artifact"]["draft"] is True
     assert board["card_kinds"]["trip"]["layout"] == "boarding-pass" and board["card_kinds"]["work_item"]["hue"] == 268 and board["timezone"] == "Europe/Madrid"
-    detail = client.get("/api/plugins/radar/tasks/t1").json()
+    detail = client.get("/api/plugins/hermes-proactive-radar/tasks/t1").json()
     assert detail["signals"][0]["meta"]["sender"].startswith("Hans") and detail["history"][0]["id"] == "p1" and detail["checklist"][0]["item"] == "reproduce"
-    report = client.get("/api/plugins/radar/tasks/t1/report").json()
+    report = client.get("/api/plugins/hermes-proactive-radar/tasks/t1/report").json()
     assert report["data_url"].startswith("data:text/html;base64,") and "Bug de Hans" in report["html"]
-    assert client.get("/api/plugins/radar/tasks/nope").status_code == 404
+    assert client.get("/api/plugins/hermes-proactive-radar/tasks/nope").status_code == 404
     # Review returns the full draft without changing the proposal; decline closes it.
-    review = client.post("/api/plugins/radar/proposals/p1/respond", json={"option": "review"}).json()
+    review = client.post("/api/plugins/hermes-proactive-radar/proposals/p1/respond", json={"option": "review"}).json()
     assert review["outcome"] == "review" and "Hi Hans" in review["detail"] and store.get_proposal("p1")["status"] == "pending"
-    declined = client.post("/api/plugins/radar/proposals/p1/respond", json={"option": "no"}).json()
+    declined = client.post("/api/plugins/hermes-proactive-radar/proposals/p1/respond", json={"option": "no"}).json()
     assert declined["outcome"] == "declined" and store.get_proposal("p1")["status"] == "declined"
     audit = store.list_audit(subject_id="p1")[0]
     assert (audit.get("metadata") or audit.get("metadata_redacted") or {}).get("channel") == "desktop"
     # Task actions, preferences and pattern dismissal.
-    assert client.post("/api/plugins/radar/tasks/t1/action", json={"action": "later"}).json()["outcome"] in ("snoozed", "later", "ok") or store.get_task("t1")["status"] == "snoozed"
-    assert client.post("/api/plugins/radar/tasks/t1/action", json={"action": "bogus"}).status_code == 400
+    assert client.post("/api/plugins/hermes-proactive-radar/tasks/t1/action", json={"action": "later"}).json()["outcome"] in ("snoozed", "later", "ok") or store.get_task("t1")["status"] == "snoozed"
+    assert client.post("/api/plugins/hermes-proactive-radar/tasks/t1/action", json={"action": "bogus"}).status_code == 400
     # Muting removes the task from the board and lists it apart; unmuting brings it back.
-    assert client.post("/api/plugins/radar/tasks/t1/action", json={"action": "mute"}).json()["outcome"] == "muted"
-    after = client.get("/api/plugins/radar/board").json()
+    assert client.post("/api/plugins/hermes-proactive-radar/tasks/t1/action", json={"action": "mute"}).json()["outcome"] == "muted"
+    after = client.get("/api/plugins/hermes-proactive-radar/board").json()
     assert after["tasks"] == [] and [m["id"] for m in after["muted_tasks"]] == ["t1"] and after["stats"]["muted"] == 1
-    assert client.post("/api/plugins/radar/tasks/t1/action", json={"action": "unmute"}).json()["outcome"] == "unmuted"
-    assert client.get("/api/plugins/radar/board").json()["muted_tasks"] == []
-    saved = client.post("/api/plugins/radar/preferences", json={"instruction": "No avisar de CI", "effect": "digest", "scope": {"sender": "ci@github.example"}}).json()
+    assert client.post("/api/plugins/hermes-proactive-radar/tasks/t1/action", json={"action": "unmute"}).json()["outcome"] == "unmuted"
+    assert client.get("/api/plugins/hermes-proactive-radar/board").json()["muted_tasks"] == []
+    saved = client.post("/api/plugins/hermes-proactive-radar/preferences", json={"instruction": "No avisar de CI", "effect": "digest", "scope": {"sender": "ci@github.example"}}).json()
     assert saved["saved"]["effect"] == "digest" and store.list_preferences(active_only=True)[0]["scope"] == {"sender": "ci@github.example"}
-    assert client.post(f"/api/plugins/radar/preferences/{saved['saved']['id']}/forget").json()["disabled"] == saved["saved"]["id"]
-    assert client.get("/api/plugins/radar/preferences").json()["preferences"] == []
-    assert client.post("/api/plugins/radar/patterns/pat1/dismiss").json()["dismissed"] == "pat1" and store.get_pattern("pat1")["status"] == "dismissed"
-    assert client.get("/api/plugins/radar/status").json()["trust"]["level"] == "balanced"
+    assert client.post(f"/api/plugins/hermes-proactive-radar/preferences/{saved['saved']['id']}/forget").json()["disabled"] == saved["saved"]["id"]
+    assert client.get("/api/plugins/hermes-proactive-radar/preferences").json()["preferences"] == []
+    assert client.post("/api/plugins/hermes-proactive-radar/patterns/pat1/dismiss").json()["dismissed"] == "pat1" and store.get_pattern("pat1")["status"] == "dismissed"
+    assert client.get("/api/plugins/hermes-proactive-radar/status").json()["trust"]["level"] == "balanced"
     # The change marker moves when something is written (what a panel compares between two polls).
     before = module._change_marker(store)
     store.create_task(task_id="t2", kind="trip", title="Viaje", summary="", entities={}, expectations=[], checklist=[], now="2026-10-19T11:00:00Z")
@@ -90,15 +90,15 @@ def test_inferred_suggestions_surface_in_the_board_and_confirm_through_the_panel
     candidate = infer.after_silence(store, cfg, sender="billing@linode.example", now_dt=NOW)
     assert candidate is not None
     client, _ = _client(monkeypatch, store, cfg, tmp_path)
-    board = client.get("/api/plugins/radar/board").json()
+    board = client.get("/api/plugins/hermes-proactive-radar/board").json()
     assert board["stats"]["suggestions"] == 1
     assert [s["id"] for s in board["suggestions"]] == [candidate["id"]] and board["suggestions"][0]["status"] == "candidate"
     assert [p["id"] for p in board["preferences"]] == [p["id"] for p in store.list_preferences(active_only=True)]  # candidate is not in the active list
-    confirmed = client.post(f"/api/plugins/radar/preferences/{candidate['id']}/confirm").json()
+    confirmed = client.post(f"/api/plugins/hermes-proactive-radar/preferences/{candidate['id']}/confirm").json()
     assert confirmed["confirmed"] == candidate["id"]
-    after = client.get("/api/plugins/radar/board").json()
+    after = client.get("/api/plugins/hermes-proactive-radar/board").json()
     assert after["stats"]["suggestions"] == 0 and candidate["id"] in [p["id"] for p in after["preferences"]]
-    assert client.post("/api/plugins/radar/preferences/pref-nope/confirm").status_code == 404
+    assert client.post("/api/plugins/hermes-proactive-radar/preferences/pref-nope/confirm").status_code == 404
 
 
 def test_batch_action_marks_several_tasks_at_once(store, tmp_path, monkeypatch):
@@ -107,12 +107,12 @@ def test_batch_action_marks_several_tasks_at_once(store, tmp_path, monkeypatch):
     for tid in ("t1", "t2", "t3"):
         store.create_task(task_id=tid, kind="work_item", title=f"Tarea {tid}", summary="", entities={}, expectations=[], checklist=[], now=now)
     client, _ = _client(monkeypatch, store, cfg, tmp_path)
-    assert client.post("/api/plugins/radar/tasks/batch", json={"ids": ["t1", "t2"], "action": "bogus"}).status_code == 400
-    res = client.post("/api/plugins/radar/tasks/batch", json={"ids": ["t1", "t2"], "action": "done"}).json()
+    assert client.post("/api/plugins/hermes-proactive-radar/tasks/batch", json={"ids": ["t1", "t2"], "action": "bogus"}).status_code == 400
+    res = client.post("/api/plugins/hermes-proactive-radar/tasks/batch", json={"ids": ["t1", "t2"], "action": "done"}).json()
     assert res["applied"] == 2 and res["action"] == "done" and res["requested"] == 2
     assert store.get_task("t1")["status"] == "done" and store.get_task("t2")["status"] == "done"
     assert store.get_task("t3")["status"] not in ("done",)  # untouched
-    muted = client.post("/api/plugins/radar/tasks/batch", json={"ids": ["t3"], "action": "mute"}).json()
+    muted = client.post("/api/plugins/hermes-proactive-radar/tasks/batch", json={"ids": ["t3"], "action": "mute"}).json()
     assert muted["applied"] == 1 and bool(store.get_task("t3")["muted"])
 
 
@@ -121,9 +121,9 @@ def test_say_records_the_owner_reply_as_a_signal(store, tmp_path, monkeypatch):
     now = "2026-10-19T10:00:00Z"
     store.create_task(task_id="t1", kind="work_item", title="Arreglar deploy", summary="", entities={}, expectations=[], checklist=[], now=now)
     client, _ = _client(monkeypatch, store, cfg, tmp_path)
-    assert client.post("/api/plugins/radar/tasks/t1/say", json={"text": "   "}).status_code == 400
-    assert client.post("/api/plugins/radar/tasks/nope/say", json={"text": "hola"}).status_code == 404
+    assert client.post("/api/plugins/hermes-proactive-radar/tasks/t1/say", json={"text": "   "}).status_code == 400
+    assert client.post("/api/plugins/hermes-proactive-radar/tasks/nope/say", json={"text": "hola"}).status_code == 404
     before = store.pending_signal_count()
-    res = client.post("/api/plugins/radar/tasks/t1/say", json={"text": "Mira en Cloudflare, el DNS cambió ayer"}).json()
+    res = client.post("/api/plugins/hermes-proactive-radar/tasks/t1/say", json={"text": "Mira en Cloudflare, el DNS cambió ayer"}).json()
     assert res["outcome"] == "said" and "Cloudflare" in res["text"]
     assert store.pending_signal_count() == before + 1  # the reply is queued for the planner

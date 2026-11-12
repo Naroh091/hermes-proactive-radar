@@ -18,6 +18,7 @@ from typing import Any, Callable
 from .pipeline.schemas import CONNECTOR_FIELDS, CONNECTOR_SCHEMA
 from .prompts import CONNECTOR_PROMPT
 from .providers.cli import conformance, validate_mapping
+from .providers.env import tool_env
 from .providers.registry import build_calendar_provider, build_mail_provider
 
 HELP_TIMEOUT = 20
@@ -33,7 +34,8 @@ def _run_help(argv: list[str], *, runner: Callable[..., str] | None = None) -> s
     if runner is not None:
         return runner(argv)
     try:
-        result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=HELP_TIMEOUT, check=False)
+        result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=HELP_TIMEOUT, check=False,
+                                env=tool_env())
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         return f"(no help: {exc})"
     return (result.stdout or "") + ("\n" + result.stderr if result.stderr and not result.stdout else "")

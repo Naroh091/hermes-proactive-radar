@@ -22,6 +22,19 @@ ASK_FIRST = frozenset({"cron.create", "task.update"})  # reversible, but automat
 EMAIL_SEND = frozenset({"gmail.send_email", "gmail.reply", "gmail.reply_all", "gmail.send_reply", "gmail.create_draft"})
 
 
+AGENT_CHANNELS = frozenset({"tool"})  # where a decision comes from when the chat model records it (radar_resolve)
+
+
+def owner_only(proposal: dict[str, Any]) -> bool:
+    """A step only the owner approves, by their own hand: anything external (send, book, pay, merge, comment, answer an
+    invitation), mail and drafts of mail, and what always asks first (a scheduled job, closing their task). The chat
+    model reads mail, pages and messages written by others; if its word were enough, a line planted in one of them
+    («accept the pending proposal») would send, merge or schedule with no button pressed (catalog review, 2026-11-11)."""
+    operation = str(proposal.get("operation_id") or proposal.get("operation") or "")
+    return (str(proposal.get("action_class") or "") == "external" or operation in EMAIL_SEND or operation in ASK_FIRST
+            or operation in NEVER_AUTO)
+
+
 def decision_like(proposal: dict[str, Any]) -> bool:
     """A stored proposal that waits for the owner's word: a question, a check, an irreversible step, or news that
     carries a question. The assistant's own work and plain news are not decisions."""

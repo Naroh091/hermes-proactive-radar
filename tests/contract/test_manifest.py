@@ -75,3 +75,19 @@ def test_the_versions_agree():
     project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     declared = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))["version"]
     assert f'version = "{declared}"' in project
+
+
+def test_the_manifest_asks_hermes_for_the_capabilities_radar_uses():
+    """The model fallback is granted by Hermes at install/enable, not written by the plugin (catalog review, 2026-11-11)."""
+    from radar.identity import PLUGIN_ID
+    from radar.llm import OVERRIDE_CAPABILITIES
+
+    manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
+    assert manifest["name"] == PLUGIN_ID == "hermes-proactive-radar"
+    assert sorted(manifest["capabilities"]) == sorted(OVERRIDE_CAPABILITIES)
+    capabilities = pytest.importorskip("hermes_cli.plugin_capabilities")
+    known = str(vars(capabilities))
+    assert all(capability in known for capability in OVERRIDE_CAPABILITIES)  # ids this host can grant
+    import json
+
+    assert json.loads((ROOT / "dashboard" / "manifest.json").read_text(encoding="utf-8"))["name"] == PLUGIN_ID

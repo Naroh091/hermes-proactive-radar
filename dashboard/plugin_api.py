@@ -1,4 +1,4 @@
-"""Radar panel backend, mounted at ``/api/plugins/radar/`` (the web dashboard and Hermes Desktop share it).
+"""Radar panel backend, mounted at ``/api/plugins/hermes-proactive-radar/`` (the web dashboard and Hermes Desktop share it).
 
 Runs inside the dashboard/serve process, not the gateway: it reads and writes the same SQLite store the
 gateway uses. Decisions taken here (accept, decline, snooze) are recorded exactly like a Telegram button;
@@ -24,6 +24,7 @@ if str(PLUGIN_ROOT) not in sys.path:
 
 from radar.config import _merge, _normalize  # noqa: E402
 from radar.delivery.context import thread_context  # noqa: E402
+from radar.identity import PLUGIN_ID  # noqa: E402
 from radar.delivery.learn import describe_preference, forget_preference, preference_from_fields, store_preference  # noqa: E402
 from radar.delivery.notice import DRAFT_INLINE  # noqa: E402
 from radar.delivery.responses import OPEN_PROPOSAL, act_on_task, respond_to_proposal, review_detail  # noqa: E402
@@ -59,7 +60,7 @@ def _settings() -> dict[str, Any]:
     try:
         from hermes_cli.config import load_config as host_load  # type: ignore[import-not-found]
 
-        raw = ((host_load() or {}).get("plugins") or {}).get("entries", {}).get("radar", {}).get("settings") or {}
+        raw = ((host_load() or {}).get("plugins") or {}).get("entries", {}).get(PLUGIN_ID, {}).get("settings") or {}
     except Exception as exc:
         log.warning("radar settings not read from the host config: %s", exc)
     merged = deepcopy(CONFIG_DEFAULTS)

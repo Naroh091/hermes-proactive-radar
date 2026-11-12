@@ -44,7 +44,9 @@ def agent_brief(store: Any, config: dict[str, Any], outbox_row: dict[str, Any], 
         lines.append(f"Open decision {item['index']}: {item['title']} [proposal {item['id']}; answers: {answers}]")
     lines.append(f"Owner's local time: {now_local.strftime('%Y-%m-%dT%H:%M %A')} ({(config.get('owner') or {}).get('timezone') or 'UTC'}).")
     lines.append("radar_task acts on the whole task (later, with `until` when they name a moment; wait; done; mute; reopen). "
-                 "radar_resolve records their decision on one step. Sending mail, paying and booking stay theirs to confirm.")
+                 "radar_resolve records their decision on one step, except approving a step that is external, sends mail or "
+                 "always asks first: that approval is theirs alone, by the notice's button or the panel, and the tool refuses it "
+                 "and sends them the notice again.")
     lines.append(CLOSE)
     return "\n".join(lines) + "\n\n" + str(text or "")
 

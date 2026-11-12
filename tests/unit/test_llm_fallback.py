@@ -10,7 +10,7 @@ import pytest
 from conftest import NOW, FakeContext, active_config
 
 from radar import llm as llm_mod
-from radar.llm import FALLBACK_BENCH_MINUTES, LlmError, LlmGate, fallback_entries, grant_override, override_granted
+from radar.llm import FALLBACK_BENCH_MINUTES, LlmError, LlmGate, fallback_entries, override_granted
 
 SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
 FALLBACKS = [{"provider": "opencode-go", "model": "muse-spark"}]
@@ -36,7 +36,7 @@ class FlakyLlm:
         self.calls.append(kwargs)
         if kwargs.get("provider"):
             if self.deny_override:
-                raise PluginLlmTrustError("Plugin 'radar' cannot override the provider (set plugins.entries.radar.llm.allow_provider_override to true to allow).")
+                raise PluginLlmTrustError("Plugin 'hermes-proactive-radar' cannot override the provider (set plugins.entries.hermes-proactive-radar.llm.allow_provider_override to true to allow).")
             return SimpleNamespace(parsed={"ok": True, "by": "fallback"}, text="", model=kwargs["model"], provider=kwargs["provider"],
                                    usage=SimpleNamespace(input_tokens=10, output_tokens=5, cost_usd=0.0))
         if self.main_error is not None:
@@ -148,11 +148,13 @@ def test_host_fallbacks_come_from_fallback_providers_and_ignore_malformed_entrie
     assert llm_mod.host_fallbacks() == FALLBACKS
 
 
-def test_the_grant_is_both_flags_under_the_plugin_entry():
+def test_the_grant_is_read_from_the_plugins_entry_and_never_written_by_radar():
+    """Catalog review, 2026-11-11: setup wrote the override flags itself. They are capabilities Hermes asks for."""
     assert override_granted({}) is False and override_granted(None) is False
-    assert override_granted({"plugins": {"entries": {"radar": {"llm": {"allow_provider_override": True}}}}}) is False  # one flag is not enough
-    cfg = {"plugins": {"entries": {"radar": {"allow_tool_override": False}}}}
-    assert override_granted(grant_override(cfg, True)) is True
-    assert cfg["plugins"]["entries"]["radar"] == {"allow_tool_override": False, "llm": {"allow_provider_override": True, "allow_model_override": True}}
-    assert override_granted(grant_override(cfg, False)) is False
-    assert override_granted(grant_override({}, True)) is True
+    entry = lambda value: {"plugins": {"entries": {"hermes-proactive-radar": value}}}  # noqa: E731
+    assert override_granted(entry({"llm": {"allow_provider_override": True}})) is False  # one flag is not enough
+    assert override_granted(entry({"llm": {"allow_provider_override": True, "allow_model_override": True}})) is True  # the host's mirror
+    assert override_granted(entry({"granted_capabilities": ["llm.model_override", "llm.provider_override"]})) is True
+    assert override_granted(entry({"granted_capabilities": ["llm.model_override"]})) is False
+    assert override_granted({"plugins": {"entries": {"radar": {"llm": {"allow_provider_override": True, "allow_model_override": True}}}}}) is False  # the old name
+    assert not hasattr(llm_mod, "grant_override")

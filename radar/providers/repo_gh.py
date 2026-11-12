@@ -7,13 +7,15 @@ request (GitHub asks for ``X-Poll-Interval`` seconds between polls). Writes (``c
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
 from typing import Any, Callable
 
 from .base import ProviderError, RepoProvider
+from .env import tool_env
+
+GH_PREFIXES = ("GH_", "GITHUB_")  # gh's own variables: its token, host and config dir
 
 Runner = Callable[[list[str], str | None], tuple[int, str, str]]
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -21,7 +23,7 @@ _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 def _default_runner(timeout: float, binary: str) -> Runner:
     def run(argv: list[str], stdin: str | None) -> tuple[int, str, str]:
-        env = {**os.environ, "GH_PROMPT_DISABLED": "1", "GH_NO_UPDATE_NOTIFIER": "1", "NO_COLOR": "1"}
+        env = tool_env(GH_PREFIXES, {"GH_PROMPT_DISABLED": "1", "GH_NO_UPDATE_NOTIFIER": "1", "NO_COLOR": "1"})
         done = subprocess.run([binary, *argv], input=stdin, capture_output=True, text=True, timeout=timeout, env=env)
         return done.returncode, done.stdout, done.stderr
 

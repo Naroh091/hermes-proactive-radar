@@ -205,3 +205,49 @@ def test_an_investigation_gets_room_to_work():
     assert job_budget(cfg, {"kind": "proposal", "action_class": "read"}, {"kind": "trip"}, operation="web.read") == (60, 900)
     assert job_budget(config(jobs={"act_turns": 90, "act_seconds": 1200}), {"kind": "proposal", "action_class": "external"}, {"kind": "purchase"}, operation="web.act") == (90, 1200)
     assert job_budget(config(jobs={"investigate_turns": 80, "investigate_seconds": 1200}), {"kind": "proposal", "action_class": "read"}, {"kind": "work_item"}) == (80, 1200)
+
+
+def test_the_chat_model_cannot_approve_what_only_the_owner_can(store):
+    """Catalog review, 2026-11-11: `radar_resolve` recorded a model-supplied accept and ran it. The model reads mail and
+    pages written by others, so its word could send, merge or schedule with no button pressed."""
+    from conftest import verify_destination
+
+    from radar.delivery.dispatch import resend_decision
+    from radar.jobs.service import start_or_wait
+    from radar.trust import owner_only
+
+    cfg = active_config()
+    verify_destination(store)
+    store.create_task(task_id="o1", kind="work_item", title="Upload falla", summary="", entities={}, expectations=[], checklist=[], now=T)
+
+    def step(pid, operation, action_class):
+        store.create_task_proposal(proposal_id=pid, task_id="o1", title=f"Paso {pid}", reason_text="", action_class=action_class, operation_id=operation,
+                                   params={}, options=[{"id": "do", "label": "Adelante"}, {"id": "no", "label": "No"}], urgency="normal",
+                                   expires_at="2026-10-22T10:00:00Z", fingerprint=pid, now=T)
+        return store.get_proposal(pid)
+
+    merge, mail, cron, look = step("merge", "github.merge_pr", "external"), step("mail", "gmail.reply", "external"), step("cron", "cron.create", "local"), step("look", "web.read", "read")
+    assert owner_only(merge) and owner_only(mail) and owner_only(cron) and not owner_only(look)
+    for proposal in (merge, mail, cron):
+        refused = respond_to_proposal(store, cfg, proposal_id=proposal["id"], option="do", actor="agent", now_dt=NOW, channel="tool")
+        assert refused["outcome"] == "owner_required" and store.get_proposal(proposal["id"])["status"] == "pending"  # nothing recorded
+    assert store.list_jobs(task_id="o1", limit=5) == []
+    refusals = [row for row in store.list_audit(limit=20) if row["decision_code"] == "owner_required"]
+    assert len(refusals) == 3 and {row["actor_kind"] for row in refusals} == {"agent"}
+    # The model may still decline or postpone them, and accept its own kind of work.
+    assert respond_to_proposal(store, cfg, proposal_id="cron", option="no", actor="agent", now_dt=NOW, channel="tool")["outcome"] == "declined"
+    assert respond_to_proposal(store, cfg, proposal_id="look", option="do", actor="agent", now_dt=NOW, channel="tool")["outcome"] == "accepted"
+    assert [row["actor_kind"] for row in store.list_audit(limit=20) if row["decision_code"] == "accepted"] == ["agent"]  # said as it was
+    # The owner's own hand still approves, and the audit says so.
+    owned = respond_to_proposal(store, cfg, proposal_id="merge", option="do", actor="telegram:7", now_dt=NOW)
+    assert owned["outcome"] == "accepted"
+    assert "verified_owner" in [row["actor_kind"] for row in store.list_audit(limit=20) if row["decision_code"] == "accepted"]
+    # Second lock: an approval that came through the tool never starts the step, however it got recorded.
+    store.respond_proposal("mail", decision="accepted", response={"option": "do", "actor": "agent", "channel": "tool"}, now=T)
+    job, reason = start_or_wait(store, cfg, proposal=store.get_proposal("mail"), option="do", now_dt=NOW)
+    assert job is None and reason == "owner_required" and store.get_proposal("mail")["status"] == "expired"
+    # And the decision goes back to the owner with its buttons, once per window.
+    again = step("again", "booking.reserve", "external")
+    assert resend_decision(store, cfg, proposal=again, now_dt=NOW) is True and resend_decision(store, cfg, proposal=again, now_dt=NOW) is False
+    row = next(r for r in store.list_outbox(limit=10) if (r.get("payload") or {}).get("proposal_ids") == ["again"])
+    assert row["payload"]["buttons"] and row["payload"]["exempt"] is True and "Paso again" in row["payload"]["text"]

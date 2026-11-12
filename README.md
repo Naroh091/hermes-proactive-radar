@@ -73,7 +73,7 @@ You need Hermes Agent 0.22 or later with its gateway connected to at least one m
 
 ```bash
 # 1. Install and enable
-hermes plugins install Naroh091/hermes-radar
+hermes plugins install Naroh091/hermes-proactive-radar
 
 # 2. Let Radar find your mail and calendar connections, then answer a few questions
 hermes radar discover
@@ -127,7 +127,7 @@ sources ──► signals ──► triage (rules) ──► extraction (model) 
 - **Native operations with single-use consent.** Replying to a mail, answering an invitation, commenting on or opening a draft pull request, and creating a cron job are executed by the plugin itself. Pressing the button records a consent bound to the operation and a hash of its parameters; the job consumes it, acts once and verifies by reading back. An interrupted external step ends as `unknown` and is never retried blindly.
 - **Conversations are judged whole.** A chat turn is never evaluated alone. When a session goes quiet, the model reads it to the end and decides whether it was resolved, left open or deferred. Compactions are followed through the host's `post_compaction` hook, so a task opened before one and resolved after it are the same conversation.
 - **Reminders are paced, not scheduled.** There are no fixed digest hours by default: the day's reminders are spread evenly over the waking hours, one decision each, capped by `reminders_per_day`. A decision unanswered for 48 hours expires and its task sleeps for a week.
-- **Models per step, with a fallback.** Each step has its own auxiliary slot (`auxiliary.radar_extract`, `radar_plan`, `radar_remind`, …), so cheap models can do the cheap work. When the main model fails, Radar retries with the host's `fallback_providers` if the owner granted it (`hermes radar fallback on`), and a provider outage never counts as a failed attempt for a signal.
+- **Models per step, with a fallback.** Each step has its own auxiliary slot (`auxiliary.radar_extract`, `radar_plan`, `radar_remind`, …), so cheap models can do the cheap work. When the main model fails, Radar retries with the host's `fallback_providers` if the owner granted the plugin its two capabilities (`llm.provider_override`, `llm.model_override`: Hermes asks for them when you install or enable it; `hermes radar fallback` shows where it stands), and a provider outage never counts as a failed attempt for a signal.
 - **Scenarios instead of guesses.** `hermes radar simulate scenarios/*.yaml` runs a described situation (mails, events, chat turns, owner replies, over several moments in time) through the real pipeline with the real model against a scratch copy of the store, and checks an `expect` block. Nothing is sent and no job runs.
 
 ## What Radar touches
@@ -159,7 +159,7 @@ A written reply is matched to its notice by the message it quotes, so it needs a
 
 ## Configuration
 
-Settings live under `plugins.entries.radar.settings` and can be edited in Hermes Desktop (Capabilities → Plugins → radar). The ones you are most likely to touch:
+Settings live under `plugins.entries.hermes-proactive-radar.settings` and can be edited in Hermes Desktop (Capabilities → Plugins → hermes-proactive-radar). The ones you are most likely to touch:
 
 ```yaml
 enabled: true

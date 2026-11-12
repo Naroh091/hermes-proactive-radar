@@ -3,10 +3,10 @@
 ## 1. Install and enable
 
 ```bash
-hermes plugins install Naroh091/hermes-radar
+hermes plugins install Naroh091/hermes-proactive-radar
 ```
 
-This leaves the plugin in `plugins.enabled`. Radar installs disabled and in shadow mode; `hermes radar setup` turns it on and writes `plugins.entries.radar.settings` and the `mcp_allowlist`.
+This leaves the plugin in `plugins.enabled`. Radar installs disabled and in shadow mode; `hermes radar setup` turns it on and writes `plugins.entries.hermes-proactive-radar.settings`. Two things are never Radar's to grant itself: the model fallback is a pair of capabilities Hermes asks for when you install or enable the plugin, and the MCP servers Radar may call go into `mcp_allowlist` only when you answer yes to that question in `setup` (never under `--yes`; it prints the line to add instead).
 
 Restart the gateway (`hermes gateway restart`). The scheduler starts when the gateway connects your messaging platform or on its first `on_session_start`.
 
@@ -17,11 +17,11 @@ hermes radar discover
 hermes radar setup
 ```
 
-`setup` asks: language, trust level, model fallback, whether to read your habits of the last twelve months on the first start, owner, timezone, quiet hours, where to write to you (the platform, the chat and your user id on it), which Gmail/Calendar servers or command-line connectors to watch and the address of each account. It writes `plugins.entries.radar.settings` and the `mcp_allowlist`.
+`setup` asks: language, trust level, whether to read your habits of the last twelve months on the first start, owner, timezone, quiet hours, where to write to you (the platform, the chat and your user id on it), which Gmail/Calendar servers or command-line connectors to watch and the address of each account. It writes `plugins.entries.hermes-proactive-radar.settings`, and then asks, as a question of its own with no as the default, whether Radar may call the MCP servers behind the sources you chose; only a yes you type adds them to `mcp_allowlist`.
 
 ### Command-line connectors
 
-`discover` lists, next to the MCP servers, the tools it finds on the machine: `gws` (Google's Workspace CLI; it uses `~/.hermes/google_token.json` when Hermes' google-workspace skill is authorised), that skill's `google_api.py` script when it is authorised, and `gog`, which needs a mapping. The first two are offered in `setup` like any MCP (`provider: gws` or `hermes_google`, no `server`); they have no push, they poll every `interval_seconds`. For a tool without a profile of its own:
+`discover` lists, next to the MCP servers, the tools it finds on the machine: `gws` (Google's Workspace CLI; it runs on its own login, `gws auth login`, or on the credentials file you set as `connector.token`; Radar never borrows another tool's token), the google-workspace skill's own `google_api.py` script when that skill is authorised, and `gog`, which needs a mapping. The first two are offered in `setup` like any MCP (`provider: gws` or `hermes_google`, no `server`); they have no push, they poll every `interval_seconds`. For a tool without a profile of its own:
 
 ```bash
 hermes radar connector derive gog --source-id gog-gmail --address me@example.org --save

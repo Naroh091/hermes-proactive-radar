@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from ..i18n import t
 from ..models import TASK_TERMINAL, canonical_hash
+from ..trust import AGENT_CHANNELS, owner_only
 from .cadence import next_delivery, paced
 from .context import thread_context
 from .snooze import SNOOZE_HOURS, deadline_of, snooze_until  # noqa: F401  (snooze_until is this module's historical name for it)
@@ -131,6 +132,12 @@ def snoozed_text(language: str, now_dt: datetime, until: datetime, config: dict[
     return t(language, "snoozed_at", when=when, title=title)
 
 
+def who(channel: str) -> str:
+    """Who an audit row says acted: the owner on a channel that checks it is them (their chat, the panel), the agent
+    when the chat model recorded the decision through its tool. Every row used to say «verified_owner»."""
+    return "agent" if channel in AGENT_CHANNELS else "verified_owner"
+
+
 def respond_to_proposal(
     store: Any, config: dict[str, Any], *, proposal_id: str, option: str, actor: str, now_dt: datetime,
     channel: str = "telegram", note: str = "",
@@ -155,7 +162,7 @@ def respond_to_proposal(
         store.respond_proposal(proposal_id, decision="declined", response={**{"option": option, "actor": actor, "channel": channel, "note": note[:500]}, "ack": True}, now=now)
         store.add_audit(
             audit_id=str(uuid4()), event_type="owner_response", subject_type="proposal", subject_id=proposal_id,
-            correlation_id=proposal.get("task_id"), actor_kind="verified_owner", decision_code="acknowledged",
+            correlation_id=proposal.get("task_id"), actor_kind=who(channel), decision_code="acknowledged",
             metadata={"option": option, "channel": channel}, now=now,
         )
         return {"outcome": "acknowledged", "text": t(language, "acknowledged"), "proposal": store.get_proposal(proposal_id)}
@@ -164,10 +171,18 @@ def respond_to_proposal(
     if proposal.get("status") not in CANCELLABLE:
         return {"outcome": "stale", "text": t(language, "unknown_callback"), "proposal": proposal}
     response = {"option": option, "actor": actor, "channel": channel, "note": note[:500]}
+    if intent == "accept" and channel in AGENT_CHANNELS and owner_only(proposal):
+        # The chat model's word is not the owner's: nothing is recorded, the step stays as it was, waiting for them.
+        store.add_audit(
+            audit_id=str(uuid4()), event_type="owner_response", subject_type="proposal", subject_id=proposal_id,
+            correlation_id=proposal.get("task_id"), actor_kind="agent", decision_code="owner_required",
+            metadata={"option": option, "channel": channel}, now=now,
+        )
+        return {"outcome": "owner_required", "text": t(language, "owner_required", title=title), "proposal": proposal}
     if intent == "review":
         store.add_audit(
             audit_id=str(uuid4()), event_type="owner_response", subject_type="proposal", subject_id=proposal_id,
-            correlation_id=proposal.get("task_id"), actor_kind="verified_owner", decision_code="review",
+            correlation_id=proposal.get("task_id"), actor_kind=who(channel), decision_code="review",
             metadata={"option": option, "channel": channel}, now=now,
         )
         _engaged(store, proposal.get("task_id"), "review", now_dt, language=language)
@@ -211,7 +226,7 @@ def respond_to_proposal(
                     pass
     store.add_audit(
         audit_id=str(uuid4()), event_type="owner_response", subject_type="proposal", subject_id=proposal_id,
-        correlation_id=proposal.get("task_id"), actor_kind="verified_owner", decision_code=outcome,
+        correlation_id=proposal.get("task_id"), actor_kind=who(channel), decision_code=outcome,
         metadata={"option": option, "channel": channel}, now=now,
     )
     return {"outcome": outcome, "text": text, "proposal": store.get_proposal(proposal_id)}
@@ -257,7 +272,7 @@ def _answer_ask(store: Any, proposal: dict[str, Any], *, option: str, actor: str
             pass
     store.add_audit(
         audit_id=str(uuid4()), event_type="owner_response", subject_type="proposal", subject_id=proposal["id"],
-        correlation_id=task_id, actor_kind="verified_owner", decision_code="answered",
+        correlation_id=task_id, actor_kind=who(channel), decision_code="answered",
         metadata={"option": option, "channel": channel, "fact": key}, now=now,
     )
     _engaged(store, task_id, "answered", now_dt, language=language)

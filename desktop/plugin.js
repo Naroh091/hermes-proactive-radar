@@ -768,7 +768,7 @@ function RadarPage() {
 }
 
 export default {
-  id: 'radar',
+  id: 'hermes-proactive-radar',
   name: 'Radar',
   defaultEnabled: true,
   register(ctx) {

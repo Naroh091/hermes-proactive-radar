@@ -24,7 +24,7 @@ var useState = _H.useState, useEffect = _H.useEffect, useMemo = _H.useMemo, useR
 var _C = SDK.components || {};
 var cn = (SDK.utils && SDK.utils.cn) || function () { return Array.prototype.filter.call(arguments, Boolean).join(" "); };
 var relativeTime = (SDK.utils && SDK.utils.timeAgo) || function () { return ""; };
-var API = "/api/plugins/radar";
+var API = "/api/plugins/hermes-proactive-radar";
 
 /* jsx runtime shim (the desktop body is authored against react/jsx-runtime) */
 function jsx(type, props, key) { return React.createElement(type, key === undefined ? props : Object.assign({}, props, { key: key })); }
@@ -78,7 +78,7 @@ try {
   }
 } catch (e) {}
 
-if (window.__HERMES_PLUGINS__) window.__HERMES_PLUGINS__.register("radar", RadarPage);
+if (window.__HERMES_PLUGINS__) window.__HERMES_PLUGINS__.register("hermes-proactive-radar", RadarPage);
 """
 
 out = "/* GENERATED from desktop/plugin.js by dashboard/build_web.py — do not edit by hand. */\n(function () {\n\"use strict\";\n" + PREAMBLE + "\n/* ===== shared body (verbatim from desktop/plugin.js) ===== */\n" + body + "\n" + EPILOGUE + "\n})();\n"

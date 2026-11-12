@@ -5,8 +5,8 @@ that too". Three profiles, all behind the same :class:`MailProvider` / :class:`C
 sources and the native operations already use:
 
 - ``gws``: Google's Workspace CLI, called directly (``gws gmail users messages list --params {...}``); full Gmail and
-  Calendar API JSON, so nothing is lost (organizer, attendees, the owner's response). Credentials: the token file the
-  Hermes google-workspace skill manages (``GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE``), or gws's own.
+  Calendar API JSON, so nothing is lost (organizer, attendees, the owner's response). Credentials: gws's own login,
+  or the file the owner sets as ``connector.token`` (``GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE``); never another tool's.
 - ``hermes_google``: the Hermes skill's ``google_api.py`` wrapper (gws when installed, the Python client otherwise),
   with its fixed JSON contract; calendar events come without organizer or response.
 - ``cli``: any other tool (``gog``…) through a mapping of Radar's operations onto its argv and JSON output, derived
@@ -28,6 +28,7 @@ from typing import Any, Callable
 from . import mcp_parsing as parse
 from .base import CalendarProvider, MailMessage, MailProvider, ProviderError
 from .calendar_gcal_mcp import normalise_event
+from .env import tool_env
 
 DEFAULT_TIMEOUT = 60
 MAX_BODY = 20000
@@ -40,6 +41,8 @@ CALENDAR_PROFILES = ("gws", "hermes_google")
 def run_cli(argv: list[str], *, env: dict[str, str] | None = None, timeout: float = DEFAULT_TIMEOUT, input_text: str | None = None) -> str:
     """Run a command and return its stdout; any failure is a :class:`ProviderError` with the tool's own words."""
     try:
+        # Never the gateway's whole environment: a mail or calendar tool gets its own minimal one (see providers/env.py).
+        env = tool_env() if env is None else env
         result = subprocess.run(list(argv), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
                                 timeout=timeout, input=input_text, check=False)
     except FileNotFoundError as exc:
@@ -66,11 +69,6 @@ def json_out(text: str) -> Any:
             except ValueError:
                 pass
         raise ProviderError(f"not JSON: {text[:120]}")
-
-
-def default_token(hermes_home: str | Path | None) -> str:
-    path = Path(hermes_home or "~/.hermes").expanduser() / TOKEN_FILE
-    return str(path) if path.exists() else ""
 
 
 def default_script(hermes_home: str | Path | None) -> str:
@@ -157,7 +155,7 @@ class GwsClient:
             argv += ["--params", json.dumps(params)]
         if body is not None:
             argv += ["--json", json.dumps(body)]
-        env = os.environ.copy()
+        env = tool_env(("GOOGLE_WORKSPACE_CLI_",))
         if self.token:
             env["GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"] = self.token
         return json_out(self.runner(argv, env=env, timeout=self.timeout))
@@ -337,7 +335,8 @@ class ScriptClient:
         self.runner = runner
 
     def call(self, *args: str) -> Any:
-        return json_out(self.runner([self.python, self.script, *args], timeout=self.timeout))
+        # The skill's own wrapper: it needs to find Hermes' home, nothing else of the gateway's environment.
+        return json_out(self.runner([self.python, self.script, *args], env=tool_env(("HERMES_",)), timeout=self.timeout))
 
 
 class ScriptMailProvider(MailProvider):

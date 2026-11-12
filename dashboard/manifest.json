@@ -1,5 +1,5 @@
 {
-  "name": "radar",
+  "name": "hermes-proactive-radar",
   "label": "Radar",
   "description": "Radar: tasks the plugin anticipates (trips, purchases, work items, commitments), their proposals, drafts, patterns and preferences",
   "icon": "Activity",

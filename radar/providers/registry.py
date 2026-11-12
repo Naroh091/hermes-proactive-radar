@@ -53,10 +53,12 @@ def needs_mcp(source: dict[str, Any]) -> bool:
 
 
 def _gws_client(source: dict[str, Any], hermes_home: str | None):
-    from .cli import GwsClient, default_token
+    from .cli import GwsClient
 
+    # Only the credentials file the owner set for this connector; without one gws runs on its own login. Radar never
+    # reaches for the token another tool keeps (the google-workspace skill's google_token.json).
     connector = source.get("connector") if isinstance(source.get("connector"), dict) else {}
-    return GwsClient(binary=str(connector.get("binary") or "gws"), token=str(connector.get("token") or default_token(hermes_home)))
+    return GwsClient(binary=str(connector.get("binary") or "gws"), token=str(connector.get("token") or ""))
 
 
 def _script_client(source: dict[str, Any], hermes_home: str | None):

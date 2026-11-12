@@ -18,7 +18,8 @@ from .models import canonical_hash
 from .pipeline.recall import Recall
 from .providers.registry import build_calendar_provider, build_mail_provider, needs_mcp
 from .providers.cron_host import HostCronProvider
-from .providers.repo_gh import GhRepoProvider
+from .providers.env import tool_env
+from .providers.repo_gh import GH_PREFIXES, GhRepoProvider
 from .scheduler import Scheduler
 from .sources.base import SourceAdapter, SyncResult
 from .sources.calendar import CalendarSource
@@ -362,7 +363,7 @@ class Runtime:
             try:
                 process = await asyncio.create_subprocess_exec(
                     "gh", "repo", "clone", repo, str(path), "--", "--filter=blob:none",
-                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE, env=tool_env(GH_PREFIXES),
                 )
                 _, stderr = await asyncio.wait_for(process.communicate(), timeout=float(jobs_cfg.get("clone_seconds", 240)))
             except (asyncio.TimeoutError, FileNotFoundError, OSError) as exc:

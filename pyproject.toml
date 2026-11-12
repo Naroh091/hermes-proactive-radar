@@ -8,13 +8,15 @@ version = "0.3.1"
 description = "Radar: tasks, checks and proposals that anticipate the owner (Hermes Agent plugin)"
 requires-python = ">=3.11"
 license = "MIT"
+# The Gmail push receiver (radar/ingress/gmail_push_receiver.py) serves with aiohttp and verifies Google's signature
+# with cryptography. Floors are the oldest API-compatible releases; upper bounds stop at the next major.
+dependencies = ["aiohttp>=3.9,<4", "cryptography>=41,<51"]
 
 [project.optional-dependencies]
-receiver = ["aiohttp>=3.9", "cryptography>=41"]
-test = ["pytest>=8"]
+test = ["pytest>=8,<10"]
 
 [project.entry-points."hermes_agent.plugins"]
-radar = "radar"
+hermes-proactive-radar = "radar"
 
 [tool.setuptools.package-data]
 radar = ["migrations/*.sql", "schemas/*.json"]

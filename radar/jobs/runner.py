@@ -132,11 +132,12 @@ class JobRunner:
 
     def _child_env(self, job: dict[str, Any] | None = None, allow: str = "") -> dict[str, str]:
         """The parent's environment plus the firewall's variables: the job marker, the step's class and, for a
-        consented external step, the tools it may use. Hooks stay on so the firewall runs in the child."""
+        consented external step, the tools it may use. Radar never sets ``HERMES_ACCEPT_HOOKS``: that would approve
+        shell hooks the user never approved, and the firewall does not need it (it is a plugin hook, and it knows a
+        job by its session mark)."""
         env = dict(self.env) if self.env is not None else dict(os.environ)
         env.pop("HERMES_RADAR_JOB_ALLOW", None)
         env.update(firewall_env((job or {}).get("action_class"), allow))
-        env.setdefault("HERMES_ACCEPT_HOOKS", "1")
         return env
 
     async def run(self, job: dict[str, Any], *, on_pid: Any = None, allow: str = "", turns: int | None = None,

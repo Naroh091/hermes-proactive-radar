@@ -33,7 +33,7 @@ while i < len(argv):
         body = json.loads(argv[i + 1]); i += 2
     else:
         parts.append(argv[i]); i += 1
-with open(os.environ["FAKE_GWS_LOG"], "a") as log:
+with open(os.environ["GOOGLE_WORKSPACE_CLI_FAKE_LOG"], "a") as log:
     log.write(json.dumps({"parts": parts, "params": params, "body": body, "token": os.environ.get("GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE", "")}) + "\n")
 def b64(text):
     return base64.urlsafe_b64encode(text.encode()).decode()
@@ -103,7 +103,7 @@ def _executable(path: Path, source: str) -> str:
 
 def _gws(tmp_path):
     log = tmp_path / "gws.log"
-    os.environ["FAKE_GWS_LOG"] = str(log)
+    os.environ["GOOGLE_WORKSPACE_CLI_FAKE_LOG"] = str(log)  # the tool's own prefix: all a child of Radar gets to see
     binary = _executable(tmp_path / "gws", FAKE_GWS)
     return binary, log
 
@@ -190,7 +190,8 @@ def test_discovery_offers_the_connectors_found_on_the_machine(tmp_path):
     assert [(r["provider"], r["kind"], r["ready"]) for r in rows] == [("gws", "gmail", True), ("gws", "calendar", True), ("cli", "gmail", False)]
     suggested = suggest_sources(rows)
     assert [s["id"] for s in suggested] == ["gws-gmail", "gws-calendar"]  # gog waits for its mapping
-    assert suggested[0]["connector"] == {"binary": binary, "token": str(tmp_path / "google_token.json")} and suggested[0]["push"]["enabled"] is False
+    # The google-workspace skill's token sits right there and is not Radar's to take: gws runs on its own login.
+    assert suggested[0]["connector"] == {"binary": binary} and suggested[0]["push"]["enabled"] is False
     assert discover_cli(tmp_path, which=lambda name: None) == []
 
 
@@ -242,3 +243,51 @@ def test_attachments_are_read_however_long_the_body_is():
     assert _attachments_from_text("Subject: x\n\nAttachments:\n- programa.pdf\n") == ["programa.pdf"]  # the older heading too
     assert _attachments_from_text("Subject: x\n\nAttachments are available in the portal.\nRegards") == []  # a sentence is not the listing
     assert _attachments_from_text("") == [] and _attachments_from_text("Attachments (0):\n") == []
+
+
+def test_a_tool_radar_starts_sees_its_own_variables_and_none_of_the_gateways_keys(tmp_path, monkeypatch):
+    """Catalog review, 2026-11-11: gws and gh were handed a full copy of the environment, every provider key in it."""
+    from radar.providers.env import tool_env
+    from radar.providers.registry import build_mail_provider
+    from radar.providers.repo_gh import GH_PREFIXES
+
+    parent = {"PATH": "/bin", "HOME": "/home/o", "LANG": "es_ES.UTF-8", "LC_ALL": "C", "XDG_CONFIG_HOME": "/home/o/.config",
+              "OPENAI_API_KEY": "sk-1", "ANTHROPIC_API_KEY": "sk-2", "TELEGRAM_BOT_TOKEN": "t", "HERMES_HOME": "/h",
+              "GH_TOKEN": "gh-1", "GITHUB_TOKEN": "gh-2", "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE": "/c.json"}
+    assert tool_env(source=parent) == {k: parent[k] for k in ("PATH", "HOME", "LANG", "LC_ALL", "XDG_CONFIG_HOME")}
+    gh = tool_env(GH_PREFIXES, {"NO_COLOR": "1"}, source=parent)
+    assert gh["GH_TOKEN"] == "gh-1" and gh["GITHUB_TOKEN"] == "gh-2" and gh["NO_COLOR"] == "1"
+    assert not {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "HERMES_HOME", "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"} & set(gh)
+    # The real child: gws run through the provider sees no key of the gateway's.
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-live")
+    seen = {}
+
+    def runner(argv, *, env=None, timeout=0, input_text=None):
+        seen.update(env or {})
+        return "{}"
+
+    GwsClient(binary="gws", runner=runner).call(["gmail", "users", "labels", "list"])
+    assert "OPENAI_API_KEY" not in seen and "PATH" in seen
+    # And the skill's token lying in Hermes' home is not picked up for it.
+    (tmp_path / "google_token.json").write_text("{}")
+    provider = build_mail_provider(None, {"id": "g", "kind": "gmail", "provider": "gws", "connector": {"binary": "gws"}}, hermes_home=str(tmp_path))
+    assert provider.client.token == ""
+    own = build_mail_provider(None, {"id": "g", "kind": "gmail", "provider": "gws", "connector": {"binary": "gws", "token": "/mine.json"}}, hermes_home=str(tmp_path))
+    assert own.client.token == "/mine.json"
+
+
+def test_mcp_discovery_reads_the_host_config_with_the_hosts_yaml_loader(tmp_path, monkeypatch):
+    """Hermes does not ship PyYAML: discovery imported it, caught the ImportError and silently found nothing."""
+    import sys
+    import types
+
+    from radar.providers import discovery
+
+    stand_in = types.ModuleType("hermes_yaml")
+    stand_in.safe_load = lambda text: {"read_with": "hermes_yaml", "text": text}
+    monkeypatch.setitem(sys.modules, "hermes_yaml", stand_in)
+    path = tmp_path / "config.yaml"
+    path.write_text("mcp_servers: {}\n", encoding="utf-8")
+    assert discovery._read_yaml(path) == {"read_with": "hermes_yaml", "text": "mcp_servers: {}\n"}
+    monkeypatch.setattr(discovery, "yaml_loader", lambda: None)
+    assert discovery._read_yaml(path) == {}  # and it says so in the log instead of passing for an empty config

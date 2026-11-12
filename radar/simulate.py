@@ -64,11 +64,12 @@ def load_scenario(path: str | Path) -> dict[str, Any]:
     if str(path).endswith(".json"):
         data = json.loads(text)
     else:
-        try:
-            import yaml
-        except ImportError as exc:  # the Hermes runtime ships PyYAML; a bare venv may not
-            raise ValueError("YAML scenarios need PyYAML; write the scenario as JSON or install pyyaml") from exc
-        data = yaml.safe_load(text)
+        from .providers.discovery import yaml_loader
+
+        load = yaml_loader()
+        if load is None:
+            raise ValueError("YAML scenarios need a YAML loader (Hermes' hermes_yaml or PyYAML); write the scenario as JSON")
+        data = load(text)
     if not isinstance(data, dict) or not (isinstance(data.get("signals"), list) or isinstance(data.get("phases"), list)):
         raise ValueError("a scenario is an object with a 'signals' list, or a 'phases' list of {at, signals, replies}")
     try:

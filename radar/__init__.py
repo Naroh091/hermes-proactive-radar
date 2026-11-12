@@ -197,6 +197,13 @@ def resolve_tool(ctx, args=None, **kwargs) -> str:
         job = None
         blocked = None
         proposal = result.get("proposal") or {}
+        if result.get("outcome") == "owner_required":
+            # Not the model's to approve: the step stays open and goes back to the owner with its buttons.
+            from .delivery.dispatch import resend_decision
+
+            resent = resend_decision(runtime.store, cfg, proposal=proposal, now_dt=utc_now())
+            return tools.as_json({"outcome": "owner_required", "text": result.get("text"), "resent": resent,
+                                  "note": "Do not retry. Tell the owner to approve it from the notice's button or the panel."})
         if result.get("outcome") == "accepted" and proposal and proposal.get("operation_id") != "check":
             job, blocked = start_or_wait(runtime.store, cfg, proposal=proposal, option=option, now_dt=utc_now())
         return tools.as_json({"outcome": result.get("outcome"), "text": result.get("text"), "job_id": job["id"] if job else None,

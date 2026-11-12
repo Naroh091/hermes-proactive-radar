@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from .config import load_config
+from .identity import ENTRY, PLUGIN_ID
+from .llm import GRANT_COMMAND
 from .scheduler import Scheduler, sync_configured_sources
 
 
@@ -29,10 +31,9 @@ def setup_cli(parser: argparse.ArgumentParser) -> None:
     actions.add_parser("validate", help="Validate configuration without opening the database")
     actions.add_parser("run-once", help="Synchronize configured sources and run one scheduler cycle")
     actions.add_parser("discover", help="Classify the profile's MCP servers by the tools they expose")
-    setup = actions.add_parser("setup", help="Interactive onboarding: trust level, model fallback, owner, sources, Gmail push")
+    setup = actions.add_parser("setup", help="Interactive onboarding: trust level, owner, sources, Gmail push")
     setup.add_argument("--yes", action="store_true", help="Accept defaults without prompting")
-    fallback = actions.add_parser("fallback", help="Let radar retry with Hermes' fallback_providers when the main model fails: status (no argument) | on | off")
-    fallback.add_argument("state", nargs="?", choices=["on", "off"], default=None)
+    actions.add_parser("fallback", help="Whether radar may retry with Hermes' fallback_providers when the main model fails (status; Hermes grants it)")
     sync = actions.add_parser("sync", help="Sync one configured source now")
     sync.add_argument("source_id")
     replay = actions.add_parser("replay", help="Re-queue one signal; the gateway judges it again on its next tick")
@@ -93,7 +94,7 @@ def command(ctx, args: argparse.Namespace) -> int:
         if action == "setup":
             return _setup(ctx, yes=bool(getattr(args, "yes", False)))
         if action == "fallback":
-            return _fallback(getattr(args, "state", None))
+            return _fallback()
         cfg = load_config(ctx)
         if action == "validate":
             _print({"valid": True, "enabled": cfg["enabled"], "mode": cfg["mode"], "trust": cfg["trust"]["level"], "sources": [s["id"] for s in cfg["sources"]]})
@@ -116,7 +117,7 @@ def command(ctx, args: argparse.Namespace) -> int:
             if action == "status":
                 _print({"enabled": False, "configured": False, "mode": cfg["mode"], "store": None})
                 return 0
-            _print({"error": "plugin_disabled", "hint": "set plugins.entries.radar.settings.enabled: true"})
+            _print({"error": "plugin_disabled", "hint": f"set {ENTRY}.settings.enabled: true"})
             return 1
         from . import _runtime, _store
 
@@ -262,9 +263,9 @@ def _connector(ctx, cfg: dict[str, Any], args: argparse.Namespace) -> int:
             setter = getattr(ctx, "set_config", None)
             if callable(setter):
                 setter("sources", sources)
-                print("Saved into plugins.entries.radar.settings.sources; restart the gateway to watch it.")
+                print(f"Saved into {ENTRY}.settings.sources; restart the gateway to watch it.")
             else:
-                print("No host config access here: add the source above to plugins.entries.radar.settings.sources by hand.")
+                print(f"No host config access here: add the source above to {ENTRY}.settings.sources by hand.")
         elif args.save:
             print("Not saved: the test failed or --address is missing.")
         return 0 if checks.get("ok") else 1
@@ -311,7 +312,7 @@ def _setup(ctx, *, yes: bool) -> int:
         level = "balanced"
     print(f"  {level_summary(level, language)}")
     print(f"  ({', '.join(describe(level)['auto_classes'])} run alone; external asks)")
-    want_fallback = _ask_fallback(yes=yes)
+    _fallback_note()
     learn = _ask("Learn your habits from the last 12 months of mail and calendar on the first start? (y/n)",
                  "y" if (cfg.get("warmup") or {}).get("enabled", True) else "n", yes=yes)
     owner_id = _ask("Owner id (any stable label)", cfg["owner"].get("id") or "owner", yes=yes)
@@ -405,14 +406,14 @@ def _setup(ctx, *, yes: bool) -> int:
     if callable(setter):
         for key, value in settings.items():
             setter(key, value)
-        print("\nSettings written to plugins.entries.radar.settings.")
+        print(f"\nSettings written to {ENTRY}.settings.")
     else:
-        print("\nSettings (copy into plugins.entries.radar.settings):")
+        print(f"\nSettings (copy into {ENTRY}.settings):")
         _print(settings)
-    _grant_host(mcp_servers, fallback=want_fallback)
+    _grant_mcp(mcp_servers, yes=yes)
     if any_push:
         _install_push_route(home, cfg["ingress"]["gmail_receiver"].get("route", "gmail-push"))
-    print("\nNext: enable the plugin (plugins.enabled: [radar]), restart the gateway, then send /radar verify from the owner's chat.")
+    print(f"\nNext: enable the plugin (`{GRANT_COMMAND}`), restart the gateway, then send /radar verify from the owner's chat.")
     return 0
 
 
@@ -425,99 +426,81 @@ def _host_config() -> tuple[Any, Any] | None:
     return host_load, host_save
 
 
-FALLBACK_YAML = "plugins.entries.radar.llm: {allow_provider_override: true, allow_model_override: true}"
-
-
 def _fallback_offer(config: dict[str, Any]) -> tuple[list[dict[str, str]], bool, str]:
-    """``(host fallback entries, granted now, their names)`` for the prompt and the status output."""
+    """``(host fallback entries, granted now, their names)`` for the status output."""
     from .llm import fallback_entries, override_granted
 
     entries = fallback_entries(config.get("fallback_providers"))
     return entries, override_granted(config), ", ".join(f"{e['model']} via {e['provider']}" for e in entries)
 
 
-def _ask_fallback(*, yes: bool) -> bool | None:
-    """Onboarding question: retry with Hermes' fallback_providers when the main model fails? None = nothing to decide."""
+def _fallback_note() -> None:
+    """Onboarding: say where the model fallback stands. Granting it is Hermes' question (the manifest declares the
+    capabilities and ``hermes plugins install`` / ``enable`` asks for them), never one this setup answers or writes."""
     host = _host_config()
     if host is None:
-        return None
+        return
     try:
         config = host[0]() or {}
     except Exception:
-        return None
+        return
     entries, granted, names = _fallback_offer(config)
     print("\nModel fallback: radar's own calls (triage, planning, reminders) use the main model; Hermes only switches\n"
           "  provider for a few error kinds, and a spend limit is not one of them.")
     if not entries:
-        print("  Hermes has no fallback_providers configured, so radar waits whenever the main model fails.\n"
-              "  Set one (hermes model) and run `hermes radar fallback on` later.")
-        return None
-    state = "granted now" if granted else "not granted yet"
-    answer = _ask(f"When the main model fails for any reason, let radar retry with {names}? ({state}) (y/n)", "y", yes=yes)
-    return answer.lower() == "y"
+        print("  Hermes has no fallback_providers configured, so radar waits whenever the main model fails (set one with `hermes model`).")
+    elif granted:
+        print(f"  Granted: when the main model fails, radar retries with {names}.")
+    else:
+        print(f"  Not granted: radar waits when the main model fails. To let it retry with {names}, grant the plugin its\n"
+              f"  capabilities through Hermes: `{GRANT_COMMAND}`.")
 
 
-def _grant_host(servers: list[str], *, fallback: bool | None = None) -> None:
-    """One host config write for what the onboarding grants: the MCP allowlist and the model-fallback override."""
-    from .llm import grant_override, override_granted
-
-    if not servers and fallback is None:
+def _grant_mcp(servers: list[str], *, yes: bool) -> None:
+    """The MCP servers behind the chosen sources go into the plugin's allowlist only when the owner says so, in so many
+    words: a question of its own, answered «y» by them. Under ``--yes``, on a default or with no terminal nothing is
+    written and the line to add is printed. Catalog review, 2026-11-11: setup used to write the allowlist as a side
+    effect of choosing the sources, and the model-fallback grant with a default yes."""
+    if not servers:
         return
+    line = f"{ENTRY}.mcp_allowlist: {servers}"
     host = _host_config()
-    if host is None:
-        if servers:
-            print(f"Add to config.yaml: plugins.entries.radar.mcp_allowlist: {servers}")
-        if fallback is not None:
-            print(f"Add to config.yaml: {FALLBACK_YAML}" if fallback else "Leave plugins.entries.radar.llm unset")
+    if host is None or yes:
+        print(f"Radar needs to call these MCP servers. Add to config.yaml: {line}")
+        return
+    answer = _ask(f"Let Radar call these MCP servers: {', '.join(servers)}? Hermes gives a plugin no MCP access by default (y/n)", "n")
+    if answer.strip().lower() != "y":
+        print(f"Not granted. Radar cannot read those sources until you add to config.yaml: {line}")
         return
     host_load, host_save = host
     try:
         config = host_load() or {}
-        entry = config.setdefault("plugins", {}).setdefault("entries", {}).setdefault("radar", {})
-        changed: list[str] = []
-        if servers:
-            current = list(entry.get("mcp_allowlist") or [])
-            for server in servers:
-                if server not in current:
-                    current.append(server)
-            entry["mcp_allowlist"] = current
-            changed.append(f"mcp_allowlist granted: {current}")
-        if fallback is not None and fallback != override_granted(config):
-            grant_override(config, fallback)
-            changed.append("model fallback " + ("granted (plugins.entries.radar.llm)" if fallback else "revoked"))
-        if changed:
-            host_save(config, merge_existing=True)
-            print("\n".join(changed))
+        entry = config.setdefault("plugins", {}).setdefault("entries", {}).setdefault(PLUGIN_ID, {})
+        current = list(entry.get("mcp_allowlist") or [])
+        added = [server for server in servers if server not in current]
+        if not added:
+            print(f"mcp_allowlist already grants: {current}")
+            return
+        entry["mcp_allowlist"] = current + added
+        host_save(config, merge_existing=True)
+        print(f"mcp_allowlist granted: {entry['mcp_allowlist']}")
     except Exception as exc:
-        print(f"Could not write the host config ({exc}). Add plugins.entries.radar.mcp_allowlist: {servers}"
-              + (f" and {FALLBACK_YAML}" if fallback else "") + " manually.")
+        print(f"Could not write the host config ({exc}). Add to config.yaml: {line}")
 
 
-def _fallback(state: str | None) -> int:
-    """`hermes radar fallback [on|off]`: show or change whether radar may retry with the host's fallback_providers."""
+def _fallback() -> int:
+    """`hermes radar fallback`: whether radar may retry with the host's fallback_providers. It only shows where the
+    grant stands: the grant is two capabilities of the plugin, asked for and recorded by Hermes, never by Radar."""
     host = _host_config()
     if host is None:
-        _print({"error": "not inside Hermes", "hint": f"add to config.yaml: {FALLBACK_YAML}"})
+        _print({"error": "not inside Hermes", "hint": f"grant the plugin its capabilities with `{GRANT_COMMAND}`"})
         return 1
-    host_load, host_save = host
-    config = host_load() or {}
-    entries, granted, names = _fallback_offer(config)
-    if state is None:
-        _print({"granted": granted, "fallback_providers": entries,
-                "note": "radar retries its own calls with these when the main model fails for any reason" if granted and entries
-                else ("no fallback_providers in the host config: set one with `hermes model`" if not entries
-                      else "not granted: run `hermes radar fallback on`")})
-        return 0
-    if state == "on" and not entries:
-        _print({"error": "no fallback_providers in the host config", "hint": "set one with `hermes model` (or fallback_providers in config.yaml), then run this again"})
-        return 1
-    from .llm import grant_override
-
-    grant_override(config, state == "on")
-    host_save(config, merge_existing=True)
-    _print({"granted": state == "on", "fallback_providers": entries,
-            "note": (f"radar now retries with {names} when the main model fails; no restart needed, the grant is read per call"
-                     if state == "on" else "radar waits when the main model fails; the grant is read per call, no restart needed")})
+    config = host[0]() or {}
+    entries, granted, _ = _fallback_offer(config)
+    _print({"granted": granted, "fallback_providers": entries,
+            "note": "radar retries its own calls with these when the main model fails for any reason" if granted and entries
+            else ("no fallback_providers in the host config: set one with `hermes model`" if not entries
+                  else f"not granted: Hermes asks for it with `{GRANT_COMMAND}`")})
     return 0
 
 
