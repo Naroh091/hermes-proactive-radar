@@ -26,6 +26,20 @@ def sender_address(sender: Any) -> str:
     return (match.group(1) if match else text).strip().lower()
 
 
+def sender_name(sender: Any) -> str:
+    """The display name of a sender, lowercased and without quotes: «"coderabbitai[bot]" <notifications@github.com>» →
+    «coderabbitai[bot]». GitHub relays bot mail from its own address, keeping the bot's name in the display name, so a
+    rule aimed at one bot has to scope by name: scoping by ``notifications@github.com`` would silence every GitHub
+    notice. Returns "" when the sender carries no display name."""
+    import re
+
+    text = str(sender or "").strip()
+    match = re.match(r'^\s*"(?P<name>.*?)"\s*<', text) or re.match(r"^\s*(?P<name>[^<]*?)\s*<", text)
+    if match:
+        return match.group("name").strip().strip('"').lower()
+    return "" if "@" in text else text.strip().strip('"').lower()
+
+
 def subject_stem(subject: Any) -> str:
     """The part of a subject that repeats across a family of messages: lowercase, without list tags,
     numbers, dates or reply prefixes, first five words. «[newsroom-org] A security advisory on markdown-it
@@ -91,7 +105,10 @@ def scope_matches(scope: dict[str, Any], observation: dict[str, Any]) -> bool:
             continue
         actual = str(observation.get(key) or "")
         if key == "sender":  # a rule may store the bare address or «Name <addr>»; compare by address either way
-            if sender_address(actual) != sender_address(expected):
+            if "@" in str(expected):  # an address scope keeps matching the address, whatever the display name
+                if sender_address(actual) != sender_address(expected):
+                    return False
+            elif sender_name(actual) != sender_name(expected):  # a name scope: GitHub relays bots from its own address
                 return False
         elif actual.lower() != str(expected).lower():
             return False
