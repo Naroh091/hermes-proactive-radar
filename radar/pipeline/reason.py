@@ -9,6 +9,7 @@ from ..llm import LlmError, LlmGate
 from .checklists import template_for
 from .schemas import ACTION_CLASSES, DISPOSITIONS, DRAFT_BASES, PLAN_SCHEMA, TASK_KINDS, URGENCIES
 from ..prompts import PLAN_PROMPT
+from ..reversibility import effective_class
 
 def fact_origin(fact: dict[str, Any]) -> str:
     """owner (stated by the owner), verified (proved by a check) or inferred (a model's reading): facts
@@ -198,7 +199,7 @@ def validate_plan(raw: Any) -> dict[str, Any]:
                 options.append(option)
         entry = {
             "title": _clip_words(item.get("title"), 160), "rationale": _clip_words(item.get("rationale"), 500),
-            "action_class": "read" if operation == "ask" else action_class, "operation": operation,
+            "action_class": "read" if operation == "ask" else effective_class(operation, action_class), "operation": operation,
             "when": _clip(item.get("when"), 40), "awaits": _clip_words(item.get("awaits"), 160),
             "urgency": item.get("urgency") if item.get("urgency") in ("low", "normal", "high") else "normal",
             "options": options[:2] if operation == "ask" else options[:3],

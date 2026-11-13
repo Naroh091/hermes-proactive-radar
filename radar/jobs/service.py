@@ -9,6 +9,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from ..models import TASK_TERMINAL
+from ..reversibility import proposal_class
 from ..trust import AGENT_CHANNELS, EMAIL_SEND, may_auto_run, owner_only
 from ..operations import native
 from .firewall import allowed_tools_for
@@ -88,7 +89,7 @@ def job_block_reason(
         return "no_task"
     if task.get("status") in TASK_TERMINAL:
         return "task_closed"
-    if auto and proposal.get("action_class") == "external" and not may_auto_run(
+    if auto and proposal_class(proposal) == "external" and not may_auto_run(
         config.get("trust") or {}, "external", kind=task.get("kind"), operation_id=proposal.get("operation_id"),
     ):
         return "external_auto"  # only operations listed in trust.auto_external run unattended, never payments or deploys
@@ -180,7 +181,7 @@ def enqueue_job_for_proposal(
     workdir = workdir_for(config, task)
     grant = None if auto else _grant(proposal, option, now)
     job_id = str(uuid4())
-    action_class = proposal.get("action_class", "read")
+    action_class = proposal_class(proposal)
     allow = allowed_tools_for(proposal.get("operation_id")) if action_class == "external" else ""
     prompt = build_job_prompt(
         task=task, proposal=proposal, option=option, action_class=action_class,
@@ -188,7 +189,7 @@ def enqueue_job_for_proposal(
     )
     store.create_job(
         job_id=job_id, task_id=task_id, proposal_id=proposal.get("id"), kind="proposal", prompt=prompt,
-        action_class=proposal.get("action_class", "read"), now=now, workdir=workdir,
+        action_class=action_class, now=now, workdir=workdir,
         worktree=bool(workdir and jobs_cfg.get("worktree", True)), skills=list(jobs_cfg.get("skills") or []),
         toolsets=list(jobs_cfg.get("toolsets") or []),
     )
@@ -205,7 +206,7 @@ def enqueue_job_for_proposal(
     store.add_audit(
         audit_id=str(uuid4()), event_type="job", subject_type="job", subject_id=job_id, correlation_id=task_id,
         actor_kind="scheduler" if auto else "verified_owner", decision_code="queued",
-        metadata={"proposal_id": proposal.get("id"), "action_class": proposal.get("action_class"), "auto": auto,
+        metadata={"proposal_id": proposal.get("id"), "action_class": action_class, "auto": auto,
                   "workdir": workdir or "", "grant": bool(grant)},
         now=now,
     )

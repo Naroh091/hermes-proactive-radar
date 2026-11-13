@@ -71,7 +71,6 @@ CONFIG_DEFAULTS: dict[str, Any] = {
     },
     "sources": [],
     "allowed_operations": [],
-    "mutations": {"enabled": False, "require_per_action_consent": True},
     "trust": {"level": "balanced", "overrides": {}, "auto_external": []},
     # Flat mirror of trust.level so the Desktop settings form can render it as a selector.
     "trust_level": None,
@@ -103,6 +102,10 @@ CONFIG_DEFAULTS: dict[str, Any] = {
     "brief": {"enabled": False, "time": "07:00"},
 }
 
+# Keys older configurations still carry and nothing reads: accepted, ignored. ``mutations`` was a switch no code
+# checked; what guards a write is the per-action consent and the class of the operation (radar.reversibility).
+RETIRED_KEYS = frozenset({"mutations"})
+
 _NESTED_KEYS = {
     "owner": {"id", "timezone", "language"},
     "destination": {"platform", "gateway_connection_ref", "resolution", "address", "owner_platform_id", "allow_groups", "verified"},
@@ -116,7 +119,6 @@ _NESTED_KEYS = {
                       "mute_to_rule_threshold"},
     "limits": {"events_per_source_cycle", "checks_per_day", "llm_calls_per_day", "llm_input_tokens", "llm_output_tokens", "jobs_per_day", "max_bundles_per_tick", "signal_attempts"},
     "retention": {"observations_days", "results_days", "audit_days", "snippet_chars", "full_content_days", "full_content_kinds", "signals_days"},
-    "mutations": {"enabled", "require_per_action_consent"},
     "trust": {"level", "overrides", "auto_external"},
     "ingress": {"gmail_receiver"},
     "jobs": {"enabled", "max_concurrent", "max_turns", "max_seconds", "model", "worktree", "skills", "toolsets", "max_auto_per_task", "auto_cooldown_minutes", "archive_sessions", "allow_tools"},
@@ -234,7 +236,7 @@ def validate_config(value: Any) -> tuple[bool, list[str]]:
     if not isinstance(value, dict):
         return False, ["configuration must be an object"]
     errors: list[str] = []
-    unknown = sorted(set(value) - set(CONFIG_DEFAULTS))
+    unknown = sorted(set(value) - set(CONFIG_DEFAULTS) - RETIRED_KEYS)
     if unknown:
         errors.append("unknown keys: " + ", ".join(unknown))
     if "enabled" in value and not isinstance(value["enabled"], bool):
@@ -380,12 +382,6 @@ def validate_config(value: Any) -> tuple[bool, list[str]]:
                 errors.append("notifications require destination.platform")
             if not isinstance(destination, dict) or not isinstance(destination.get("owner_platform_id"), str) or not destination["owner_platform_id"]:
                 errors.append("notifications require destination.owner_platform_id")
-    mutations = value.get("mutations")
-    if isinstance(mutations, dict):
-        if not isinstance(mutations.get("enabled"), bool):
-            errors.append("mutations.enabled must be boolean")
-        if mutations.get("require_per_action_consent") is not True:
-            errors.append("mutations.require_per_action_consent must remain true")
 
     if value.get("trust_level") not in (None, *TRUST_LEVELS):
         errors.append("trust_level must be cautious, balanced or autonomous")

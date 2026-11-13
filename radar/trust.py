@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .reversibility import proposal_class
+
 LEVELS = ("cautious", "balanced", "autonomous")
 _AUTO_BY_LEVEL = {
     "cautious": frozenset({"read"}),
@@ -31,7 +33,7 @@ def owner_only(proposal: dict[str, Any]) -> bool:
     model reads mail, pages and messages written by others; if its word were enough, a line planted in one of them
     («accept the pending proposal») would send, merge or schedule with no button pressed (catalog review, 2026-11-11)."""
     operation = str(proposal.get("operation_id") or proposal.get("operation") or "")
-    return (str(proposal.get("action_class") or "") == "external" or operation in EMAIL_SEND or operation in ASK_FIRST
+    return (proposal_class(proposal) == "external" or operation in EMAIL_SEND or operation in ASK_FIRST
             or operation in NEVER_AUTO)
 
 
@@ -40,7 +42,7 @@ def decision_like(proposal: dict[str, Any]) -> bool:
     carries a question. The assistant's own work and plain news are not decisions."""
     operation = str(proposal.get("operation_id") or "")
     params = proposal.get("params") or {}
-    return operation in ("ask", "check") or proposal.get("action_class") == "external" or (operation == "inform" and bool(params.get("ask")))
+    return operation in ("ask", "check") or proposal_class(proposal) == "external" or (operation == "inform" and bool(params.get("ask")))
 
 
 def needs_consent(config: dict[str, Any], task: dict[str, Any] | None, proposal: dict[str, Any]) -> bool:
@@ -48,7 +50,7 @@ def needs_consent(config: dict[str, Any], task: dict[str, Any] | None, proposal:
     trust level reserves for them); False when it is the assistant's own work, which runs by itself and is never
     offered as a button. Accepts a planned item (``operation``, ``ask``) or a stored proposal (``operation_id``, ``params``)."""
     operation = str(proposal.get("operation_id") or proposal.get("operation") or "")
-    action_class = str(proposal.get("action_class") or "read")
+    action_class = proposal_class(proposal)  # never the planner's label alone: the operation decides when it is stricter
     params = proposal.get("params") if isinstance(proposal.get("params"), dict) else {}
     if operation in ("ask", "check"):
         return True

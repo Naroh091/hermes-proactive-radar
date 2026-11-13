@@ -36,6 +36,38 @@ def classify(operation: str | None) -> str:
     return "external"
 
 
+_RANK = {"read": 0, "local": 1, "external": 2}
+# Words to the owner: a question, a consistency check, a piece of news. They run nothing, so their label is kept.
+CONVERSATION = frozenset({"ask", "check", "inform"})
+# An entry in the owner's own calendar is local as long as nobody is invited, and that is not known when the step is
+# planned: the job firewall holds it (``_own_calendar_entry`` refuses any invitee in a ``local`` step), so the floor
+# here is ``local`` and a planner that says ``external`` is still believed.
+FLOOR = {"calendar.create": "local"}
+
+
+def effective_class(operation: str | None, label: Any = None) -> str:
+    """The class a step is held to: the stricter of what the planner said and what this module knows of the operation.
+
+    The planner reads mail, pages and pull requests written by others, so its label may only raise the bar, never
+    lower it: a ``github.comment`` it calls ``local`` is external (catalog review, 2026-11-12). A named operation this
+    module does not know is external. A step with no operation keeps its label: it can only run as a job, where the
+    firewall denies by default whatever the label does not grant."""
+    said = str(label or "read").lower()
+    if said not in _RANK:
+        said = "read"
+    key = str(operation or "")
+    if not key or key in CONVERSATION:
+        return said
+    known = FLOOR.get(key) or classify(key)
+    return known if _RANK[known] > _RANK[said] else said
+
+
+def proposal_class(proposal: dict[str, Any]) -> str:
+    """:func:`effective_class` of a planned item (``operation``) or a stored proposal (``operation_id``), so rows
+    stored before the rule are judged by it too."""
+    return effective_class(proposal.get("operation_id") or proposal.get("operation"), proposal.get("action_class"))
+
+
 def is_reversible(operation: str | None) -> bool:
     return classify(operation) in {"read", "local"}
 

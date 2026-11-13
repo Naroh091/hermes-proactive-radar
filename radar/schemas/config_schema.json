@@ -13,7 +13,6 @@
     "jobs",
     "limits",
     "mode",
-    "mutations",
     "notifications",
     "observation",
     "owner",
@@ -599,21 +598,7 @@
     },
     "mutations": {
       "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "enabled",
-        "require_per_action_consent"
-      ],
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false
-        },
-        "require_per_action_consent": {
-          "type": "boolean",
-          "default": true
-        }
-      }
+      "description": "Retired: accepted for older configurations and ignored."
     },
     "trust": {
       "type": "object",

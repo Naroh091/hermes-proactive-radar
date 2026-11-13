@@ -209,14 +209,14 @@ def block_message(tool_name: Any, job_class: str) -> str:
 
 
 OWN_CALENDAR_STEMS = frozenset({"create_event", "update_event"})
+_INVITEE_KEY = re.compile(r"attend|guest|invit|particip", re.IGNORECASE)  # however the calendar tool spells who is invited
 
 
 def _own_calendar_entry(stem: str, args: Any) -> bool:
     """An entry in the owner's own calendar with nobody invited is a reminder: private and reversible."""
     if stem not in OWN_CALENDAR_STEMS or not isinstance(args, dict):
         return False
-    attendees = args.get("attendees") or args.get("guests") or args.get("invitees") or []
-    return not attendees
+    return not any(value for key, value in args.items() if _INVITEE_KEY.search(str(key)))
 
 
 # Radar's own store, and the words that change it. The chat agent edited it by hand twice in two days (tasks muted

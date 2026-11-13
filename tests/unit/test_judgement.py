@@ -251,3 +251,56 @@ def test_the_chat_model_cannot_approve_what_only_the_owner_can(store):
     assert resend_decision(store, cfg, proposal=again, now_dt=NOW) is True and resend_decision(store, cfg, proposal=again, now_dt=NOW) is False
     row = next(r for r in store.list_outbox(limit=10) if (r.get("payload") or {}).get("proposal_ids") == ["again"])
     assert row["payload"]["buttons"] and row["payload"]["exempt"] is True and "Paso again" in row["payload"]["text"]
+
+
+def test_the_planners_label_never_lowers_the_class_of_an_operation(store):
+    """Catalog review, 2026-11-12: every gate trusted the planner's `action_class`. The planner reads mail and pull
+    requests written by others, so a crafted message could get a `github.comment` labelled `local`: the chat model
+    could then accept it, and under `balanced` trust it ran by itself and posted."""
+    from conftest import verify_destination
+
+    from radar.jobs.service import start_or_wait
+    from radar.reversibility import effective_class
+    from radar.trust import needs_consent, owner_only
+
+    # The rule: the stricter of the label and the operation's own class; a named unknown operation is external.
+    assert effective_class("github.comment", "local") == "external" and effective_class("calendar.respond", "read") == "external"
+    assert effective_class("web.act", "read") == "external" and effective_class("made.up", "local") == "external"
+    assert effective_class("github.open_pr", "read") == "local" and effective_class("github.open_pr", "external") == "external"
+    assert effective_class("investigate", "local") == "local" and effective_class("web.read", "read") == "read"
+    # Words to the owner and steps with no operation keep their label; an own calendar entry is at least local.
+    assert effective_class("ask", "read") == "read" and effective_class("inform", "read") == "read" and effective_class("", "local") == "local"
+    assert effective_class("calendar.create", "read") == "local" and effective_class("calendar.create", "external") == "external"
+    assert effective_class("github.comment", "nonsense") == "external" and effective_class("", "nonsense") == "read"
+
+    # Where the plan is parsed.
+    plan = reason.validate_plan({"task_match": {"decision": "new"}, "task": {"title": "PR"}, "notify": {"disposition": "digest"}, "proposals": [
+        {"title": "Comment on the PR", "action_class": "local", "operation": "github.comment"},
+        {"title": "Answer the invitation", "action_class": "read", "operation": "calendar.respond"},
+        {"title": "Look at the logs", "action_class": "read", "operation": "investigate"}]})
+    assert [p["action_class"] for p in plan["proposals"]] == ["external", "external", "read"]
+
+    # Where it is stored, and at every gate, including a row stored before the rule.
+    cfg = active_config()
+    assert cfg["trust"]["level"] == "balanced"
+    verify_destination(store)
+    store.create_task(task_id="c1", kind="work_item", title="Upload falla", summary="", entities={}, expectations=[], checklist=[], now=T)
+    store.create_task_proposal(proposal_id="comment", task_id="c1", title="Comentar en el PR", reason_text="", action_class="local", operation_id="github.comment",
+                               params={"repo": "acme/app", "number": 7, "body": "LGTM"}, options=[{"id": "do", "label": "Adelante"}], urgency="normal",
+                               expires_at="2026-10-22T10:00:00Z", fingerprint="comment", now=T)
+    assert store.get_proposal("comment")["action_class"] == "external"
+    store.db.execute("UPDATE proposals SET action_class='local' WHERE id='comment'")  # as an older row still says
+    old = store.get_proposal("comment")
+    assert old["action_class"] == "local" and owner_only(old) and needs_consent(cfg, store.get_task("c1"), old)
+    assert job_block_reason(store, cfg, proposal=old, now_dt=NOW, auto=True) == "external_auto"
+    refused = respond_to_proposal(store, cfg, proposal_id="comment", option="do", actor="agent", now_dt=NOW, channel="tool")
+    assert refused["outcome"] == "owner_required" and store.list_jobs(task_id="c1", limit=5) == []
+    job, why = start_or_wait(store, cfg, proposal=old, option="do", now_dt=NOW, auto=True)
+    assert job is None and why == "external_auto"
+
+    # The own calendar entry stays the assistant's work, and the firewall is what keeps it private.
+    assert not needs_consent(cfg, {"kind": "personal"}, {"operation": "calendar.create", "action_class": "local"})
+    assert guard_tool_call("mcp__gcal__create_event", {"summary": "ITV"}, job={"action_class": "local", "allow": ""}) is None
+    for key in ("attendees", "guests", "invitees", "participants", "attendeeEmails"):
+        blocked = guard_tool_call("mcp__gcal__create_event", {"summary": "ITV", key: ["x@example.com"]}, job={"action_class": "local", "allow": ""})
+        assert blocked and blocked["action"] == "block", key

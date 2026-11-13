@@ -285,7 +285,8 @@ def test_configuration_defaults_are_safe_and_complete():
     assert CONFIG_DEFAULTS["destination"]["platform"] is None
     assert CONFIG_DEFAULTS["destination"]["verified"] is False
     assert CONFIG_DEFAULTS["notifications"]["enabled"] is False
-    assert CONFIG_DEFAULTS["mutations"] == {"enabled": False, "require_per_action_consent": True}
+    assert "mutations" not in CONFIG_DEFAULTS  # a switch nothing checked; older configurations that carry it still load
+    assert validate_config({**CONFIG_DEFAULTS, "mutations": {"enabled": True, "require_per_action_consent": True}})[0]
     assert CONFIG_DEFAULTS["limits"]["checks_per_day"] == 200
 
     ok, errors = validate_config(CONFIG_DEFAULTS)

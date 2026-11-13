@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .models import TASK_TERMINAL, PlanIdentity, canonical_json, validate_transition
+from .reversibility import effective_class
 
 
 @dataclass(frozen=True)
@@ -1288,9 +1289,11 @@ class Store:
         destination_id: str | None = None, priority: str = "normal", job_id: str | None = None,
         status: str = "pending",
     ) -> dict[str, Any]:
-        """User-facing suggestion. An open or in-flight proposal with the same fingerprint is reused, never duplicated."""
+        """User-facing suggestion. An open or in-flight proposal with the same fingerprint is reused, never duplicated.
+        The class stored is never weaker than the operation's own (:func:`radar.reversibility.effective_class`)."""
         if action_class not in {"read", "local", "external"}:
             raise ValueError("invalid action class")
+        action_class = effective_class(operation_id, action_class)
         if urgency not in {"low", "normal", "high"}:
             raise ValueError("invalid urgency")
         params = self._object(params, "params")
