@@ -1,6 +1,8 @@
 """Buttons that say what they do, one notice per open question, and chats judged whole even when deferred piecemeal."""
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
@@ -216,6 +218,34 @@ def test_the_step_an_answer_leads_to_is_put_to_the_owner_at_once(store):
     step = next(p for p in store.list_proposals(task_id=first.task_id) if p["operation_id"] == "web.act")
     assert told.disposition == "notify_now" and step["batch_key"] == "now"
     assert dispatch(store, cfg, NOW + timedelta(minutes=1))["notices"] == 1
+
+
+@pytest.mark.parametrize("disposition", ["notify_now", "silent"])
+def test_the_question_an_answer_leads_to_comes_at_once_whatever_the_plan_said_of_it(store, disposition):
+    """2026-11-13: «yes, I will attend» led to «with a guest?». The plan left it silent, so the rule above (written for
+    a plan that said «digest») did not apply, and it reached the owner with the reminder two and a half hours later,
+    under «I'll prepare the confirmation»."""
+    from radar.delivery.responses import respond_to_proposal
+
+    cfg = active_config()
+    verify_destination(store)
+    ask = {"title": "¿Confirmamos tu asistencia a la gala?", "rationale": "", "action_class": "read", "operation": "ask", "when": "", "urgency": "normal",
+           "options": [{"id": "asistir", "label": "Sí, asistiré"}, {"id": "no", "label": "No asistiré"}]}
+    first = _apply(store, cfg, plan_answer(proposals=[ask],
+                                           notify={"disposition": "notify_now", "urgency": "now", "importance": "high", "reason": "x"}))
+    assert dispatch(store, cfg, NOW)["notices"] == 1
+    question = next(p for p in store.list_proposals(task_id=first.task_id) if p["operation_id"] == "ask")
+    guest = {"title": "¿Usas la plaza de acompañante?", "rationale": "", "action_class": "read", "operation": "ask", "when": "", "urgency": "normal",
+             "options": [{"id": "con", "label": "Sí, con acompañante"}, {"id": "solo", "label": "No, iré solo"}]}
+    later = plan_answer(task_match={"decision": "advances", "task_id": first.task_id, "why": "same gala"}, proposals=[guest],
+                        notify={"disposition": disposition, "urgency": "this_week", "importance": "high", "reason": "x"})
+    assert respond_to_proposal(store, cfg, proposal_id=question["id"], option="asistir", actor="telegram:1", now_dt=NOW)["outcome"] == "answered"
+    answer = next(s for s in store.list_signals() if s["kind"] == "user_reply" and (s.get("meta") or {}).get("proposal_id") == question["id"])
+    told = act.apply(store, cfg, signals=[answer], extract=extract_step.validate_extract(extract_answer()),
+                     plan=reason.validate_plan(later), now_dt=NOW + timedelta(minutes=1), preferences=[])
+    step = next(p for p in store.list_proposals(task_id=first.task_id) if p["title"].startswith("¿Usas"))
+    assert told.disposition == "notify_now" and step["batch_key"] == "now", disposition
+    assert dispatch(store, cfg, NOW + timedelta(minutes=1))["notices"] == 1, disposition
 
 
 def test_the_same_step_without_an_answer_still_waits_for_the_summary(store):

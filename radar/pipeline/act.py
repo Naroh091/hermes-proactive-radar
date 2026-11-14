@@ -699,7 +699,10 @@ def apply(
     # under a notice that had just said «I'll carry on from there and report back».
     answered_now = any(s.get("kind") == "user_reply" and (s.get("meta") or {}).get("proposal_id") for s in signals)
     owner_steps = [p for p in plan.get("proposals") or [] if p.get("action_class") != "read" or p.get("operation") == "ask"]
-    answer_step = (answered_now and bool(owner_steps) and disposition == "digest" and not terminal and not kept_closed
+    # Whatever the plan said of it: on 2026-11-13 «yes, I will attend» led to «with a guest?», which the plan left silent
+    # (nothing due this week); the rule that never leaves an important decision unseen then put it in the reminder, two
+    # and a half hours later, under «I'll prepare the confirmation».
+    answer_step = (answered_now and bool(owner_steps) and not in_panel and not terminal and not kept_closed
                    and not (extract or {}).get("manipulation"))
     if answer_step:
         disposition, urgency = "notify_now", "now"
